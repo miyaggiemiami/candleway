@@ -17,18 +17,17 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container flex h-16 items-center justify-between px-4">
         {/* Logo */}
-        <div className="flex items-center gap-3">
+        <a href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-400 shadow-lg shadow-primary/30">
             <TrendingUp className="h-5 w-5 text-primary-foreground" />
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold tracking-tight">
-              <span className="gradient-text">Candle</span>
-              <span className="text-foreground">Way</span>
+              <span className="gradient-text">CandleWay</span>
             </span>
             <span className="text-[10px] text-muted-foreground -mt-1">AI Chart Analyzer</span>
           </div>
-        </div>
+        </a>
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-6">
@@ -40,6 +39,9 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
           </a>
           <a href="/pricing" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Pricing
+          </a>
+          <a href="/settings" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            Settings
           </a>
         </nav>
 
@@ -95,6 +97,9 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
             </a>
             <a href="/pricing" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-secondary transition-colors">
               <span className="text-sm font-medium">Pricing</span>
+            </a>
+            <a href="/settings" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-secondary transition-colors">
+              <span className="text-sm font-medium">Settings</span>
             </a>
             <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-secondary/50">
               <span className="text-sm text-muted-foreground">Daily Analyses</span>
