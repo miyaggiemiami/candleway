@@ -200,7 +200,7 @@ export default function Settings() {
             <Separator />
             <div className="text-center text-sm text-muted-foreground">
               <p>CandleWay v1.0.0</p>
-              <p className="mt-1">© 2024 CandleWay. All rights reserved.</p>
+              <p className="mt-1">© 2025 CandleWay. All rights reserved.</p>
             </div>
           </CardContent>
         </Card>
