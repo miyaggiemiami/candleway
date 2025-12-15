@@ -64,7 +64,7 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
               Premium
             </Badge>
           ) : (
-            <Button variant="premium" size="sm" className="hidden sm:flex">
+            <Button variant="premium" size="sm" className="hidden sm:flex" onClick={() => window.location.href = "/pricing"}>
               <Crown className="h-4 w-4" />
               Upgrade
             </Button>
@@ -106,7 +106,7 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
               <span className="text-sm font-mono font-semibold text-primary">{dailyUsed}/{dailyLimit}</span>
             </div>
             {!isPremium && (
-              <Button variant="premium" className="mt-2">
+              <Button variant="premium" className="mt-2" onClick={() => window.location.href = "/pricing"}>
                 <Crown className="h-4 w-4" />
                 Upgrade to Premium
               </Button>
