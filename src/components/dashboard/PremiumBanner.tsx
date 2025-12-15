@@ -48,7 +48,7 @@ export function PremiumBanner() {
           </div>
         </div>
 
-        <Button variant="premium" size="lg" className="shrink-0">
+        <Button variant="premium" size="lg" className="shrink-0" onClick={() => window.location.href = "/pricing"}>
           <Crown className="h-5 w-5" />
           Go Premium
         </Button>
