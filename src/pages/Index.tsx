@@ -6,6 +6,7 @@ import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
 import { PremiumBanner } from "@/components/dashboard/PremiumBanner";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { AnalysisResultDisplay } from "@/components/analysis/AnalysisResult";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   TradingPair, 
   Timeframe, 
@@ -13,29 +14,6 @@ import {
   AnalysisResult 
 } from "@/types/analysis";
 import { useToast } from "@/hooks/use-toast";
-
-const mockAnalysis: AnalysisResult = {
-  id: "1",
-  timestamp: new Date(),
-  pair: "EUR/USD",
-  timeframe: "H1",
-  style: "Day Trading",
-  imageUrl: "",
-  trend: "Uptrend",
-  bias: "Buy",
-  probability: 78,
-  riskScore: 4,
-  supportLevels: ["1.0850", "1.0820", "1.0780"],
-  resistanceLevels: ["1.0920", "1.0950", "1.1000"],
-  marketStructure: "Higher highs and higher lows forming. Price is respecting the ascending trendline with strong bullish momentum.",
-  detectedPatterns: ["Bullish Engulfing", "Double Bottom", "Ascending Triangle"],
-  supplyDemandZones: ["Demand Zone: 1.0850-1.0870", "Supply Zone: 1.0950-1.0980"],
-  possibleOutcomes: ["Continuation to 1.0950", "Pullback to 1.0850 before continuation", "Volatility spike on news"],
-  stopLoss: "1.0820",
-  takeProfit: "1.0950",
-  reasoning: "The chart shows a clear uptrend with price making consecutive higher highs and higher lows. A bullish engulfing pattern has formed at the demand zone around 1.0850, suggesting strong buyer interest. The ascending triangle pattern indicates accumulation, and a breakout above 1.0920 could trigger further upside momentum toward 1.0950.",
-  disclaimer: "Not financial advice. Probability-based analysis only. Always manage your risk appropriately.",
-};
 
 export default function Index() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -67,25 +45,79 @@ export default function Index() {
 
     setIsAnalyzing(true);
     
-    // Simulate AI analysis delay
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Set mock result with the uploaded image
-    setAnalysisResult({
-      ...mockAnalysis,
-      imageUrl: selectedImage,
-      pair,
-      timeframe,
-      style,
-    });
-    
-    setDailyUsed(prev => prev + 1);
-    setIsAnalyzing(false);
-    
-    toast({
-      title: "Analysis Complete",
-      description: "Your chart has been analyzed successfully.",
-    });
+    try {
+      // Call the AI analysis edge function
+      const { data, error } = await supabase.functions.invoke('analyze-chart', {
+        body: {
+          imageBase64: selectedImage,
+          pair,
+          timeframe,
+          style,
+        },
+      });
+
+      if (error) {
+        console.error('Analysis error:', error);
+        toast({
+          title: "Analysis Failed",
+          description: error.message || "Failed to analyze chart. Please try again.",
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (data.error) {
+        toast({
+          title: "Analysis Failed",
+          description: data.error,
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Create the analysis result from AI response
+      const result: AnalysisResult = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        pair,
+        timeframe,
+        style,
+        imageUrl: selectedImage,
+        trend: data.trend || "Sideways",
+        bias: data.bias || "No Trade",
+        probability: data.probability || 50,
+        riskScore: data.riskScore || 5,
+        supportLevels: data.supportLevels || [],
+        resistanceLevels: data.resistanceLevels || [],
+        marketStructure: data.marketStructure || "Unable to determine",
+        detectedPatterns: data.detectedPatterns || [],
+        supplyDemandZones: data.supplyDemandZones || [],
+        possibleOutcomes: data.possibleOutcomes || [],
+        stopLoss: data.stopLoss || "-",
+        takeProfit: data.takeProfit || "-",
+        reasoning: data.reasoning || "Analysis complete.",
+        disclaimer: data.disclaimer || "Not financial advice. Probability-based analysis only.",
+      };
+
+      setAnalysisResult(result);
+      setDailyUsed(prev => prev + 1);
+      
+      toast({
+        title: "Analysis Complete",
+        description: `${result.bias} signal detected with ${result.probability}% probability.`,
+      });
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      toast({
+        title: "Analysis Failed",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleAnalyzeAnother = () => {
