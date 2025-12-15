@@ -26,7 +26,7 @@ export default function Index() {
   const [dailyUsed, setDailyUsed] = useState(1);
   const { toast } = useToast();
 
-  const dailyLimit = 3;
+  const dailyLimit = 10;
   const isPremium = false;
   const isLimitReached = dailyUsed >= dailyLimit && !isPremium;
 
