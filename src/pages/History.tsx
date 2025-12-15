@@ -11,7 +11,7 @@ import { AnalysisResult, Bias, TradingPair, Timeframe, TradingStyle } from "@/ty
 const mockHistory: AnalysisResult[] = [
   {
     id: "1",
-    timestamp: new Date("2024-01-15T10:30:00"),
+    timestamp: new Date("2025-12-15T10:30:00"),
     pair: "EUR/USD",
     timeframe: "H1",
     style: "Day Trading",
@@ -33,7 +33,7 @@ const mockHistory: AnalysisResult[] = [
   },
   {
     id: "2",
-    timestamp: new Date("2024-01-14T14:15:00"),
+    timestamp: new Date("2025-12-14T14:15:00"),
     pair: "XAU/USD",
     timeframe: "H4",
     style: "Swing Trading",
@@ -55,7 +55,7 @@ const mockHistory: AnalysisResult[] = [
   },
   {
     id: "3",
-    timestamp: new Date("2024-01-13T09:00:00"),
+    timestamp: new Date("2025-12-13T09:00:00"),
     pair: "NAS100",
     timeframe: "M15",
     style: "Scalping",
