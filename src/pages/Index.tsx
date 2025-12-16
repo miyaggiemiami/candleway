@@ -1,3 +1,4 @@
+// CandleWay Dashboard
 import { useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { ChartUpload } from "@/components/dashboard/ChartUpload";
