@@ -6,7 +6,7 @@ import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
 import { PremiumBanner } from "@/components/dashboard/PremiumBanner";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { AnalysisResultDisplay } from "@/components/analysis/AnalysisResult";
-import { supabase, isSupabaseConfigured } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   TradingPair, 
   Timeframe, 
@@ -42,15 +42,6 @@ export default function Index() {
 
   const handleAnalyze = async () => {
     if (!selectedImage || isLimitReached) return;
-
-    if (!isSupabaseConfigured) {
-      toast({
-        title: "Setup Required",
-        description: "Cloud backend is being configured. Please try again in a moment.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     setIsAnalyzing(true);
     
