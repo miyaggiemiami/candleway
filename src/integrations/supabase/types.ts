@@ -14,7 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          daily_analyses_used: number | null
+          id: string
+          is_premium: boolean | null
+          last_analysis_reset: string | null
+          preferred_pair: string | null
+          preferred_timeframe: string | null
+          trading_style: string | null
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          daily_analyses_used?: number | null
+          id?: string
+          is_premium?: boolean | null
+          last_analysis_reset?: string | null
+          preferred_pair?: string | null
+          preferred_timeframe?: string | null
+          trading_style?: string | null
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          daily_analyses_used?: number | null
+          id?: string
+          is_premium?: boolean | null
+          last_analysis_reset?: string | null
+          preferred_pair?: string | null
+          preferred_timeframe?: string | null
+          trading_style?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

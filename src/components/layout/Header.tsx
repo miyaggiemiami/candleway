@@ -1,8 +1,16 @@
-import { TrendingUp, Crown, Menu, User } from "lucide-react";
+import { TrendingUp, Crown, Menu, User, LogOut, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
   isPremium?: boolean;
@@ -12,6 +20,12 @@ interface HeaderProps {
 
 export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = "/auth";
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -48,31 +62,58 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
         {/* Right Side */}
         <div className="flex items-center gap-3">
           {/* Usage Counter */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50">
-            <span className="text-xs text-muted-foreground">Daily:</span>
-            <span className={cn(
-              "text-sm font-mono font-semibold",
-              dailyUsed >= dailyLimit ? "text-destructive" : "text-primary"
-            )}>
-              {dailyUsed}/{dailyLimit}
-            </span>
-          </div>
+          {user && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50">
+              <span className="text-xs text-muted-foreground">Daily:</span>
+              <span className={cn(
+                "text-sm font-mono font-semibold",
+                dailyUsed >= dailyLimit ? "text-destructive" : "text-primary"
+              )}>
+                {dailyUsed}/{dailyLimit}
+              </span>
+            </div>
+          )}
 
-          {isPremium ? (
+          {user && isPremium ? (
             <Badge variant="premium" className="gap-1">
               <Crown className="h-3 w-3" />
               Premium
             </Badge>
-          ) : (
+          ) : user && !isPremium ? (
             <Button variant="premium" size="sm" className="hidden sm:flex" onClick={() => window.location.href = "/pricing"}>
               <Crown className="h-4 w-4" />
               Upgrade
             </Button>
-          )}
+          ) : null}
 
-          <Button variant="ghost" size="icon" className="hidden md:flex">
-            <User className="h-5 w-5" />
-          </Button>
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="hidden md:flex">
+                  <User className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <div className="px-2 py-1.5 text-sm text-muted-foreground truncate">
+                  {user.email}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => window.location.href = "/settings"}>
+                  <User className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="default" size="sm" className="hidden md:flex gap-2" onClick={() => window.location.href = "/auth"}>
+              <LogIn className="h-4 w-4" />
+              Sign In
+            </Button>
+          )}
 
           <Button
             variant="ghost"
@@ -101,14 +142,27 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
             <a href="/settings" className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-secondary transition-colors">
               <span className="text-sm font-medium">Settings</span>
             </a>
-            <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-secondary/50">
-              <span className="text-sm text-muted-foreground">Daily Analyses</span>
-              <span className="text-sm font-mono font-semibold text-primary">{dailyUsed}/{dailyLimit}</span>
-            </div>
-            {!isPremium && (
+            {user && (
+              <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-secondary/50">
+                <span className="text-sm text-muted-foreground">Daily Analyses</span>
+                <span className="text-sm font-mono font-semibold text-primary">{dailyUsed}/{dailyLimit}</span>
+              </div>
+            )}
+            {user && !isPremium && (
               <Button variant="premium" className="mt-2" onClick={() => window.location.href = "/pricing"}>
                 <Crown className="h-4 w-4" />
                 Upgrade to Premium
+              </Button>
+            )}
+            {user ? (
+              <Button variant="outline" className="mt-2" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
+            ) : (
+              <Button variant="default" className="mt-2" onClick={() => window.location.href = "/auth"}>
+                <LogIn className="h-4 w-4 mr-2" />
+                Sign In
               </Button>
             )}
           </nav>
