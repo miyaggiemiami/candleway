@@ -41,16 +41,28 @@ export default function Index() {
     setSelectedImage(null);
   };
 
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleAnalyze = async () => {
-    if (!selectedImage || isLimitReached) return;
+    if (!selectedFile || isLimitReached) return;
 
     setIsAnalyzing(true);
     
     try {
+      // Convert file to base64
+      const imageBase64 = await convertFileToBase64(selectedFile);
+      
       // Call the AI analysis edge function
       const { data, error } = await supabase.functions.invoke('analyze-chart', {
         body: {
-          imageBase64: selectedImage,
+          imageBase64,
           pair,
           timeframe,
           style,
