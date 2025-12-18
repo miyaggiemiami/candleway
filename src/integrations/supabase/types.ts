@@ -14,11 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      analyses: {
+        Row: {
+          bias: string
+          created_at: string
+          detected_patterns: string[] | null
+          disclaimer: string | null
+          id: string
+          image_url: string | null
+          market_structure: string | null
+          pair: string
+          possible_outcomes: string[] | null
+          probability: number
+          reasoning: string | null
+          resistance_levels: string[] | null
+          risk_score: number
+          stop_loss: string | null
+          style: string
+          supply_demand_zones: string[] | null
+          support_levels: string[] | null
+          take_profit: string | null
+          timeframe: string
+          trend: string
+          user_id: string
+        }
+        Insert: {
+          bias: string
+          created_at?: string
+          detected_patterns?: string[] | null
+          disclaimer?: string | null
+          id?: string
+          image_url?: string | null
+          market_structure?: string | null
+          pair: string
+          possible_outcomes?: string[] | null
+          probability: number
+          reasoning?: string | null
+          resistance_levels?: string[] | null
+          risk_score: number
+          stop_loss?: string | null
+          style: string
+          supply_demand_zones?: string[] | null
+          support_levels?: string[] | null
+          take_profit?: string | null
+          timeframe: string
+          trend: string
+          user_id: string
+        }
+        Update: {
+          bias?: string
+          created_at?: string
+          detected_patterns?: string[] | null
+          disclaimer?: string | null
+          id?: string
+          image_url?: string | null
+          market_structure?: string | null
+          pair?: string
+          possible_outcomes?: string[] | null
+          probability?: number
+          reasoning?: string | null
+          resistance_levels?: string[] | null
+          risk_score?: number
+          stop_loss?: string | null
+          style?: string
+          supply_demand_zones?: string[] | null
+          support_levels?: string[] | null
+          take_profit?: string | null
+          timeframe?: string
+          trend?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
           daily_analyses_used: number | null
+          display_name: string | null
           id: string
           is_premium: boolean | null
           last_analysis_reset: string | null
@@ -33,6 +106,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_analyses_used?: number | null
+          display_name?: string | null
           id?: string
           is_premium?: boolean | null
           last_analysis_reset?: string | null
@@ -47,6 +121,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           daily_analyses_used?: number | null
+          display_name?: string | null
           id?: string
           is_premium?: boolean | null
           last_analysis_reset?: string | null

@@ -18,9 +18,14 @@ interface HeaderProps {
   dailyLimit?: number;
 }
 
-export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: HeaderProps) {
+export function Header({ isPremium: propIsPremium, dailyUsed: propDailyUsed, dailyLimit = 10 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
+  
+  // Use profile data if available, otherwise fall back to props
+  const isPremium = profile?.is_premium ?? propIsPremium ?? false;
+  const dailyUsed = profile?.daily_analyses_used ?? propDailyUsed ?? 0;
+  const displayName = profile?.display_name || profile?.username || user?.email?.split('@')[0];
 
   const handleSignOut = async () => {
     await signOut();
@@ -94,8 +99,9 @@ export function Header({ isPremium = false, dailyUsed = 0, dailyLimit = 3 }: Hea
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <div className="px-2 py-1.5 text-sm text-muted-foreground truncate">
-                  {user.email}
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium truncate">{displayName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => window.location.href = "/settings"}>

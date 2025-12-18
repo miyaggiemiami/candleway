@@ -8,6 +8,7 @@ import { PremiumBanner } from "@/components/dashboard/PremiumBanner";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { AnalysisResultDisplay } from "@/components/analysis/AnalysisResult";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   TradingPair, 
   Timeframe, 
@@ -24,11 +25,12 @@ export default function Index() {
   const [style, setStyle] = useState<TradingStyle>("Day Trading");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [dailyUsed, setDailyUsed] = useState(1);
   const { toast } = useToast();
+  const { user, profile, incrementDailyUsage } = useAuth();
 
   const dailyLimit = 10;
-  const isPremium = false;
+  const dailyUsed = profile?.daily_analyses_used ?? 0;
+  const isPremium = profile?.is_premium ?? false;
   const isLimitReached = dailyUsed >= dailyLimit && !isPremium;
 
   const handleImageSelect = (file: File, preview: string) => {
@@ -50,8 +52,50 @@ export default function Index() {
     });
   };
 
+  const saveAnalysisToDb = async (result: AnalysisResult) => {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('analyses')
+      .insert({
+        user_id: user.id,
+        pair: result.pair,
+        timeframe: result.timeframe,
+        style: result.style,
+        image_url: result.imageUrl,
+        trend: result.trend,
+        bias: result.bias,
+        probability: result.probability,
+        risk_score: result.riskScore,
+        support_levels: result.supportLevels,
+        resistance_levels: result.resistanceLevels,
+        market_structure: result.marketStructure,
+        detected_patterns: result.detectedPatterns,
+        supply_demand_zones: result.supplyDemandZones,
+        possible_outcomes: result.possibleOutcomes,
+        stop_loss: result.stopLoss,
+        take_profit: result.takeProfit,
+        reasoning: result.reasoning,
+        disclaimer: result.disclaimer,
+      });
+
+    if (error) {
+      console.error('Error saving analysis:', error);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!selectedFile || isLimitReached) return;
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to analyze charts.",
+        variant: "destructive",
+      });
+      window.location.href = "/auth";
+      return;
+    }
 
     setIsAnalyzing(true);
     
@@ -97,7 +141,7 @@ export default function Index() {
         pair,
         timeframe,
         style,
-        imageUrl: selectedImage,
+        imageUrl: selectedImage || "",
         trend: data.trend || "Sideways",
         bias: data.bias || "No Trade",
         probability: data.probability || 50,
@@ -114,8 +158,13 @@ export default function Index() {
         disclaimer: data.disclaimer || "Not financial advice. Probability-based analysis only.",
       };
 
+      // Save to database
+      await saveAnalysisToDb(result);
+      
+      // Increment daily usage
+      await incrementDailyUsage();
+
       setAnalysisResult(result);
-      setDailyUsed(prev => prev + 1);
       
       toast({
         title: "Analysis Complete",
