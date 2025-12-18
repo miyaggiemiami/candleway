@@ -6,6 +6,7 @@ import { LevelCard } from "./LevelCard";
 import { PatternList } from "./PatternList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Download, 
   Share2, 
@@ -21,6 +22,81 @@ interface AnalysisResultProps {
 }
 
 export function AnalysisResultDisplay({ result, onAnalyzeAnother }: AnalysisResultProps) {
+  const { toast } = useToast();
+
+  const handleExport = () => {
+    const exportData = {
+      date: result.timestamp.toISOString(),
+      pair: result.pair,
+      timeframe: result.timeframe,
+      style: result.style,
+      bias: result.bias,
+      probability: result.probability,
+      riskScore: result.riskScore,
+      trend: result.trend,
+      supportLevels: result.supportLevels,
+      resistanceLevels: result.resistanceLevels,
+      stopLoss: result.stopLoss,
+      takeProfit: result.takeProfit,
+      marketStructure: result.marketStructure,
+      detectedPatterns: result.detectedPatterns,
+      supplyDemandZones: result.supplyDemandZones,
+      possibleOutcomes: result.possibleOutcomes,
+      reasoning: result.reasoning,
+    };
+
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `candleway-analysis-${result.pair.replace("/", "-")}-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export Complete",
+      description: "Analysis exported successfully.",
+    });
+  };
+
+  const handleShare = async () => {
+    const shareText = `CandleWay Analysis\n\n` +
+      `📊 ${result.pair} | ${result.timeframe}\n` +
+      `📈 Signal: ${result.bias} (${result.probability}%)\n` +
+      `🎯 SL: ${result.stopLoss} | TP: ${result.takeProfit}\n` +
+      `📉 Risk Score: ${result.riskScore}/10\n` +
+      `\n${result.reasoning}\n\n` +
+      `⚠️ ${result.disclaimer}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `CandleWay - ${result.pair} Analysis`,
+          text: shareText,
+        });
+        toast({
+          title: "Shared",
+          description: "Analysis shared successfully.",
+        });
+      } catch (err) {
+        // User cancelled or share failed, copy to clipboard instead
+        await navigator.clipboard.writeText(shareText);
+        toast({
+          title: "Copied to clipboard",
+          description: "Analysis copied to clipboard for sharing.",
+        });
+      }
+    } else {
+      // Fallback to clipboard
+      await navigator.clipboard.writeText(shareText);
+      toast({
+        title: "Copied to clipboard",
+        description: "Analysis copied to clipboard for sharing.",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -32,11 +108,11 @@ export function AnalysisResultDisplay({ result, onAnalyzeAnother }: AnalysisResu
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4" />
             Export
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleShare}>
             <Share2 className="h-4 w-4" />
             Share
           </Button>

@@ -3,81 +3,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Minus, Calendar, Download, Filter, Clock } from "lucide-react";
-import { useState } from "react";
-import { AnalysisResult, Bias, TradingPair, Timeframe, TradingStyle } from "@/types/analysis";
+import { TrendingUp, TrendingDown, Minus, Calendar, Download, Filter, Clock, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bias } from "@/types/analysis";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock history data
-const mockHistory: AnalysisResult[] = [
-  {
-    id: "1",
-    timestamp: new Date("2025-12-15T10:30:00"),
-    pair: "EUR/USD",
-    timeframe: "H1",
-    style: "Day Trading",
-    imageUrl: "",
-    trend: "Uptrend",
-    bias: "Buy",
-    probability: 78,
-    riskScore: 4,
-    supportLevels: ["1.0850", "1.0820"],
-    resistanceLevels: ["1.0920", "1.0950"],
-    marketStructure: "Higher Highs, Higher Lows",
-    detectedPatterns: ["Bullish Engulfing"],
-    supplyDemandZones: ["Demand: 1.0830-1.0850"],
-    possibleOutcomes: ["Continuation to 1.0950"],
-    stopLoss: "1.0810",
-    takeProfit: "1.0950",
-    reasoning: "Strong bullish momentum",
-    disclaimer: "Not financial advice."
-  },
-  {
-    id: "2",
-    timestamp: new Date("2025-12-14T14:15:00"),
-    pair: "XAU/USD",
-    timeframe: "H4",
-    style: "Swing Trading",
-    imageUrl: "",
-    trend: "Downtrend",
-    bias: "Sell",
-    probability: 65,
-    riskScore: 6,
-    supportLevels: ["2020", "2010"],
-    resistanceLevels: ["2045", "2060"],
-    marketStructure: "Lower Highs, Lower Lows",
-    detectedPatterns: ["Head & Shoulders"],
-    supplyDemandZones: ["Supply: 2040-2050"],
-    possibleOutcomes: ["Break below 2020"],
-    stopLoss: "2055",
-    takeProfit: "2010",
-    reasoning: "Bearish pattern confirmed",
-    disclaimer: "Not financial advice."
-  },
-  {
-    id: "3",
-    timestamp: new Date("2025-12-13T09:00:00"),
-    pair: "NAS100",
-    timeframe: "M15",
-    style: "Scalping",
-    imageUrl: "",
-    trend: "Sideways",
-    bias: "No Trade",
-    probability: 45,
-    riskScore: 8,
-    supportLevels: ["16800", "16750"],
-    resistanceLevels: ["16900", "16950"],
-    marketStructure: "Consolidation",
-    detectedPatterns: ["Doji", "Inside Bar"],
-    supplyDemandZones: [],
-    possibleOutcomes: ["Wait for breakout"],
-    stopLoss: "-",
-    takeProfit: "-",
-    reasoning: "No clear direction",
-    disclaimer: "Not financial advice."
-  },
-];
+interface AnalysisRecord {
+  id: string;
+  created_at: string;
+  pair: string;
+  timeframe: string;
+  style: string;
+  trend: string;
+  bias: string;
+  probability: number;
+  risk_score: number;
+  support_levels: string[];
+  resistance_levels: string[];
+  market_structure: string;
+  detected_patterns: string[];
+  supply_demand_zones: string[];
+  possible_outcomes: string[];
+  stop_loss: string;
+  take_profit: string;
+  reasoning: string;
+}
 
-const getBiasIcon = (bias: Bias) => {
+const getBiasIcon = (bias: string) => {
   switch (bias) {
     case "Buy":
       return <TrendingUp className="h-4 w-4" />;
@@ -88,7 +42,7 @@ const getBiasIcon = (bias: Bias) => {
   }
 };
 
-const getBiasVariant = (bias: Bias): "buy" | "sell" | "neutral" => {
+const getBiasVariant = (bias: string): "buy" | "sell" | "neutral" => {
   switch (bias) {
     case "Buy":
       return "buy";
@@ -102,14 +56,49 @@ const getBiasVariant = (bias: Bias): "buy" | "sell" | "neutral" => {
 export default function History() {
   const [filterPair, setFilterPair] = useState<string>("all");
   const [filterBias, setFilterBias] = useState<string>("all");
+  const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
-  const filteredHistory = mockHistory.filter(item => {
+  useEffect(() => {
+    if (user) {
+      fetchAnalyses();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const fetchAnalyses = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('analyses')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching analyses:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load analysis history.",
+        variant: "destructive",
+      });
+    } else {
+      setAnalyses(data || []);
+    }
+    setLoading(false);
+  };
+
+  const filteredHistory = analyses.filter(item => {
     if (filterPair !== "all" && item.pair !== filterPair) return false;
     if (filterBias !== "all" && item.bias !== filterBias) return false;
     return true;
   });
 
-  const formatDate = (date: Date) => {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -117,12 +106,57 @@ export default function History() {
     });
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
     });
   };
+
+  const exportAllAnalyses = () => {
+    if (filteredHistory.length === 0) {
+      toast({
+        title: "No data to export",
+        description: "There are no analyses to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const csvContent = [
+      ["Date", "Time", "Pair", "Timeframe", "Style", "Bias", "Probability", "Risk Score", "Stop Loss", "Take Profit", "Patterns"].join(","),
+      ...filteredHistory.map(item => [
+        formatDate(item.created_at),
+        formatTime(item.created_at),
+        item.pair,
+        item.timeframe,
+        item.style,
+        item.bias,
+        item.probability,
+        item.risk_score,
+        item.stop_loss || "-",
+        item.take_profit || "-",
+        `"${(item.detected_patterns || []).join("; ")}"`
+      ].join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `candleway-history-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export Complete",
+      description: `Exported ${filteredHistory.length} analyses.`,
+    });
+  };
+
+  // Get unique pairs from analyses
+  const uniquePairs = [...new Set(analyses.map(a => a.pair))];
 
   return (
     <div className="min-h-screen bg-background">
@@ -135,7 +169,7 @@ export default function History() {
             <h1 className="text-2xl md:text-3xl font-bold">Analysis History</h1>
             <p className="text-muted-foreground">View your past chart analyses</p>
           </div>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={exportAllAnalyses}>
             <Download className="h-4 w-4" />
             Export All
           </Button>
@@ -153,10 +187,9 @@ export default function History() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Pairs</SelectItem>
-              <SelectItem value="EUR/USD">EUR/USD</SelectItem>
-              <SelectItem value="XAU/USD">XAU/USD</SelectItem>
-              <SelectItem value="NAS100">NAS100</SelectItem>
-              <SelectItem value="GBP/USD">GBP/USD</SelectItem>
+              {uniquePairs.map(pair => (
+                <SelectItem key={pair} value={pair}>{pair}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={filterBias} onValueChange={setFilterBias}>
@@ -172,8 +205,25 @@ export default function History() {
           </Select>
         </div>
 
-        {/* History List */}
-        {filteredHistory.length > 0 ? (
+        {/* Loading State */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : !user ? (
+          <Card className="glass-card">
+            <CardContent className="py-12 text-center">
+              <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-2">Sign in to view history</h3>
+              <p className="text-muted-foreground mb-4">
+                Please sign in to access your analysis history
+              </p>
+              <Button variant="default" onClick={() => window.location.href = "/auth"}>
+                Sign In
+              </Button>
+            </CardContent>
+          </Card>
+        ) : filteredHistory.length > 0 ? (
           <div className="space-y-4">
             {filteredHistory.map((item) => (
               <Card key={item.id} className="glass-card hover:border-primary/30 transition-colors cursor-pointer">
@@ -185,10 +235,10 @@ export default function History() {
                         <Calendar className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium">{formatDate(item.timestamp)}</p>
+                        <p className="text-sm font-medium">{formatDate(item.created_at)}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatTime(item.timestamp)}
+                          {formatTime(item.created_at)}
                         </p>
                       </div>
                     </div>
@@ -201,7 +251,7 @@ export default function History() {
                         <Badge variant="secondary" className="text-xs">{item.style}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {item.detectedPatterns.join(", ") || "No patterns"}
+                        {(item.detected_patterns || []).join(", ") || "No patterns"}
                       </p>
                     </div>
 
