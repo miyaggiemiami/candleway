@@ -2,12 +2,17 @@ import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, Crown, Zap, TrendingUp, Shield, Clock, BarChart3 } from "lucide-react";
+import { Check, Crown, Zap, TrendingUp, Shield, Clock, BarChart3, Loader2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "react-router-dom";
 
 const features = {
   free: [
-    "3 daily chart analyses",
+    "10 daily chart analyses (with ads)",
     "Basic AI analysis",
     "Support/Resistance detection",
     "Candlestick pattern recognition",
@@ -52,10 +57,89 @@ const faqs = [
 ];
 
 export default function Pricing() {
-  const handleUpgrade = () => {
-    // TODO: Integrate with Stripe
-    console.log("Upgrade clicked - Stripe integration needed");
+  const { user, session, profile, checkSubscription } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('success') === 'true') {
+      toast({
+        title: "Payment Successful!",
+        description: "Welcome to CandleWay Premium. Enjoy unlimited analyses!",
+      });
+      checkSubscription();
+    } else if (searchParams.get('canceled') === 'true') {
+      toast({
+        title: "Payment Canceled",
+        description: "Your payment was canceled. No charges were made.",
+        variant: "destructive",
+      });
+    }
+  }, [searchParams]);
+
+  const handleUpgrade = async () => {
+    if (!user || !session) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to upgrade to Premium.",
+        variant: "destructive",
+      });
+      window.location.href = "/auth";
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to start checkout. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleManageSubscription = async () => {
+    if (!session) return;
+    
+    setPortalLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-portal', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to open billing portal.",
+        variant: "destructive",
+      });
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const isPremium = profile?.is_premium ?? false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -98,17 +182,17 @@ export default function Pricing() {
                 ))}
               </ul>
               <Button variant="outline" className="w-full mt-6" disabled>
-                Current Plan
+                {!isPremium ? "Current Plan" : "Free Plan"}
               </Button>
             </CardContent>
           </Card>
 
           {/* Premium Plan */}
-          <Card className="glass-card relative border-primary/50 shadow-lg shadow-primary/20">
+          <Card className={`glass-card relative ${isPremium ? 'border-emerald-500/50' : 'border-primary/50'} shadow-lg shadow-primary/20`}>
             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
               <Badge variant="premium" className="gap-1">
                 <Crown className="h-3 w-3" />
-                Most Popular
+                {isPremium ? "Your Plan" : "Most Popular"}
               </Badge>
             </div>
             <CardHeader>
@@ -118,7 +202,7 @@ export default function Pricing() {
               </CardTitle>
               <CardDescription>For serious traders</CardDescription>
               <div className="mt-4">
-                <span className="text-4xl font-bold gradient-text">$19.99</span>
+                <span className="text-4xl font-bold gradient-text">$9.99</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
             </CardHeader>
@@ -131,10 +215,17 @@ export default function Pricing() {
                   </li>
                 ))}
               </ul>
-              <Button variant="premium" className="w-full mt-6" onClick={handleUpgrade}>
-                <Crown className="h-4 w-4 mr-2" />
-                Upgrade to Premium
-              </Button>
+              {isPremium ? (
+                <Button variant="outline" className="w-full mt-6" onClick={handleManageSubscription} disabled={portalLoading}>
+                  {portalLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Manage Subscription
+                </Button>
+              ) : (
+                <Button variant="premium" className="w-full mt-6" onClick={handleUpgrade} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Crown className="h-4 w-4 mr-2" />}
+                  Upgrade to Premium
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>

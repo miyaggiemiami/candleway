@@ -9,6 +9,7 @@ import { Bias } from "@/types/analysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { AnalysisDetailDialog } from "@/components/analysis/AnalysisDetailDialog";
 
 interface AnalysisRecord {
   id: string;
@@ -29,6 +30,7 @@ interface AnalysisRecord {
   stop_loss: string;
   take_profit: string;
   reasoning: string;
+  image_url?: string;
 }
 
 const getBiasIcon = (bias: string) => {
@@ -58,6 +60,8 @@ export default function History() {
   const [filterBias, setFilterBias] = useState<string>("all");
   const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisRecord | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -226,7 +230,14 @@ export default function History() {
         ) : filteredHistory.length > 0 ? (
           <div className="space-y-4">
             {filteredHistory.map((item) => (
-              <Card key={item.id} className="glass-card hover:border-primary/30 transition-colors cursor-pointer">
+              <Card 
+                key={item.id} 
+                className="glass-card hover:border-primary/30 transition-colors cursor-pointer"
+                onClick={() => {
+                  setSelectedAnalysis(item);
+                  setDialogOpen(true);
+                }}
+              >
                 <CardContent className="p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     {/* Left: Date & Time */}
@@ -287,6 +298,12 @@ export default function History() {
             </CardContent>
           </Card>
         )}
+
+        <AnalysisDetailDialog 
+          analysis={selectedAnalysis}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
       </main>
     </div>
   );
