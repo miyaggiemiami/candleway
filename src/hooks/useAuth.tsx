@@ -22,6 +22,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   incrementDailyUsage: () => Promise<void>;
+  checkSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -76,6 +77,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq('user_id', user.id);
     
     setProfile({ ...profile, daily_analyses_used: newCount });
+  };
+
+  const checkSubscription = async () => {
+    if (!session) return;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('check-subscription', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (!error && data) {
+        // Refresh profile to get updated is_premium status
+        await refreshProfile();
+      }
+    } catch (err) {
+      console.error('Error checking subscription:', err);
+    }
   };
 
   useEffect(() => {
@@ -146,7 +166,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, refreshProfile, incrementDailyUsage }}>
+    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, refreshProfile, incrementDailyUsage, checkSubscription }}>
       {children}
     </AuthContext.Provider>
   );
