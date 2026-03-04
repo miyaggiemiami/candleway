@@ -2,11 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +22,6 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY is not configured');
       return new Response(
         JSON.stringify({ error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -32,46 +30,50 @@ serve(async (req) => {
 
     console.log(`Analyzing chart: ${pair} | ${timeframe} | ${style}`);
 
-    const systemPrompt = `You are an expert trading chart analyst. Analyze the provided trading chart image and return a detailed analysis in JSON format.
+    const systemPrompt = `You are an institutional trading analyst with deep expertise in technical analysis, price action, and market microstructure.
 
-The user is analyzing: ${pair} on ${timeframe} timeframe with ${style} trading style.
+Analyze the provided chart for: ${pair} on ${timeframe} timeframe with ${style} trading style.
 
-You must analyze:
-- Candlestick patterns (pin bar, engulfing, doji, hammer, morning/evening star, etc.)
-- Market structure (higher highs/lows, lower highs/lows, consolidation)
-- Support and resistance levels (identify specific price levels)
-- Supply and demand zones
-- Chart patterns (double top/bottom, head & shoulders, triangles, wedges, flags, channels)
-- Trend direction and strength
-- Breakouts or fakeouts
-- Price action signals
+ANALYSIS FRAMEWORK:
+1. Market Structure: Identify HH/HL (bullish), LH/LL (bearish), or consolidation
+2. Key Levels: Precise support/resistance from price action, not round numbers
+3. Candlestick Patterns: Pin bars, engulfing, doji, hammer, morning/evening star, three soldiers/crows
+4. Chart Patterns: Double top/bottom, head & shoulders, triangles, wedges, flags, channels
+5. Trend Analysis: Direction, strength, momentum shifts
+6. Supply/Demand Zones: Institutional order blocks and liquidity pools
+7. Breakout/Fakeout Assessment: Volume context and structural validity
 
-Based on your analysis, provide:
-1. Overall trend direction
-2. Trading bias (Buy, Sell, or No Trade)
-3. Probability score (0-100%)
-4. Risk score (1-10, where 10 is highest risk)
-5. Support and resistance levels
-6. Detected patterns
-7. Stop loss and take profit recommendations appropriate for the trading style
-8. Possible outcomes
-9. Detailed reasoning
+DECISION RULES:
+- direction: BUY only if multiple confluences align bullish. SELL only if bearish confluences align. WAIT if confluence is weak, mixed, or unclear.
+- confidence: 0-100. Reduce for poor chart clarity, mixed signals, or ranging markets. Only 80+ for strong multi-factor confluence.
+- risk_level: Low (clear trend + pattern), Medium (some confluence), High (counter-trend or unclear)
+- NEVER guarantee profit. If analysis is unclear → direction must be WAIT.
+- Confidence must genuinely reflect structure alignment, trend strength, momentum, and S/R confluence.
 
 IMPORTANT: Return ONLY valid JSON in this exact structure:
 {
+  "direction": "BUY" | "SELL" | "WAIT",
   "trend": "Uptrend" | "Downtrend" | "Sideways",
   "bias": "Buy" | "Sell" | "No Trade",
+  "confidence": <number 0-100>,
   "probability": <number 0-100>,
+  "risk_level": "Low" | "Medium" | "High",
   "riskScore": <number 1-10>,
+  "entry": "<specific price level>",
+  "stop_loss": "<specific price level>",
+  "take_profit": "<specific price level>",
+  "risk_reward": "<ratio like 1:2.5>",
   "supportLevels": ["level1", "level2", "level3"],
   "resistanceLevels": ["level1", "level2", "level3"],
-  "marketStructure": "<description of market structure>",
+  "marketStructure": "<HH/HL/LH/LL description>",
   "detectedPatterns": ["pattern1", "pattern2"],
   "supplyDemandZones": ["zone1", "zone2"],
-  "possibleOutcomes": ["outcome1", "outcome2", "outcome3"],
-  "stopLoss": "<price level or pips>",
-  "takeProfit": "<price level or pips>",
-  "reasoning": "<detailed explanation of your analysis>"
+  "possibleOutcomes": [
+    {"scenario": "Bullish", "probability": 60, "description": "..."},
+    {"scenario": "Bearish", "probability": 30, "description": "..."},
+    {"scenario": "Sideways", "probability": 10, "description": "..."}
+  ],
+  "reasoning": "<detailed institutional-grade explanation>"
 }`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -81,7 +83,7 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-pro',
         messages: [
           { role: 'system', content: systemPrompt },
           {
@@ -89,13 +91,11 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
             content: [
               {
                 type: 'text',
-                text: `Please analyze this ${pair} chart on ${timeframe} timeframe for ${style} trading. Provide your analysis in the JSON format specified.`
+                text: `Analyze this ${pair} chart on ${timeframe} timeframe for ${style} trading. Return structured JSON analysis.`
               },
               {
                 type: 'image_url',
-                image_url: {
-                  url: imageBase64
-                }
+                image_url: { url: imageBase64 }
               }
             ]
           }
@@ -105,14 +105,12 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
 
     if (!response.ok) {
       if (response.status === 429) {
-        console.error('Rate limit exceeded');
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       if (response.status === 402) {
-        console.error('Payment required');
         return new Response(
           JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -130,16 +128,12 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      console.error('No content in AI response');
       return new Response(
         JSON.stringify({ error: 'No analysis generated' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('AI Response received, parsing...');
-
-    // Extract JSON from the response (handle markdown code blocks)
     let jsonStr = content;
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
@@ -157,16 +151,29 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
       );
     }
 
-    // Add metadata
+    // Normalize possibleOutcomes to string array for DB compatibility
+    let possibleOutcomes = analysis.possibleOutcomes || [];
+    if (possibleOutcomes.length > 0 && typeof possibleOutcomes[0] === 'object') {
+      possibleOutcomes = possibleOutcomes.map((o: any) => 
+        `${o.scenario} (${o.probability}%): ${o.description}`
+      );
+    }
+
     const result = {
       ...analysis,
+      possibleOutcomes,
       pair,
       timeframe,
       style,
-      disclaimer: "Not financial advice. Probability-based analysis only. Always manage your risk appropriately."
+      // Ensure backward compatibility
+      stopLoss: analysis.stop_loss || analysis.stopLoss || '-',
+      takeProfit: analysis.take_profit || analysis.takeProfit || '-',
+      probability: analysis.confidence || analysis.probability || 50,
+      riskScore: analysis.riskScore || (analysis.risk_level === 'Low' ? 3 : analysis.risk_level === 'Medium' ? 5 : 8),
+      disclaimer: "Not financial advice. Probability-based analysis only. AI is not guaranteed. Always manage your risk."
     };
 
-    console.log('Analysis complete:', result.bias, result.probability + '%');
+    console.log('Analysis complete:', result.direction || result.bias, result.probability + '%');
 
     return new Response(
       JSON.stringify(result),
