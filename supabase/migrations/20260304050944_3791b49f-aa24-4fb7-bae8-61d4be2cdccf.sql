@@ -1,0 +1,1 @@
+UPDATE profiles SET is_premium = true;
