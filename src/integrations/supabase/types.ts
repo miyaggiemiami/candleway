@@ -97,6 +97,7 @@ export type Database = {
           last_analysis_reset: string | null
           preferred_pair: string | null
           preferred_timeframe: string | null
+          subscription_tier: string
           trading_style: string | null
           updated_at: string
           user_id: string
@@ -112,6 +113,7 @@ export type Database = {
           last_analysis_reset?: string | null
           preferred_pair?: string | null
           preferred_timeframe?: string | null
+          subscription_tier?: string
           trading_style?: string | null
           updated_at?: string
           user_id: string
@@ -127,12 +129,153 @@ export type Database = {
           last_analysis_reset?: string | null
           preferred_pair?: string | null
           preferred_timeframe?: string | null
+          subscription_tier?: string
           trading_style?: string | null
           updated_at?: string
           user_id?: string
           username?: string | null
         }
         Relationships: []
+      }
+      risk_consent: {
+        Row: {
+          consent_text: string
+          consented_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          consent_text: string
+          consented_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          consent_text?: string
+          consented_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      risk_settings: {
+        Row: {
+          automation_mode: string
+          circuit_breaker_enabled: boolean
+          confidence_threshold: number
+          created_at: string
+          daily_profit_lock: number
+          id: string
+          kill_switch_active: boolean
+          max_daily_loss: number
+          max_trades_per_day: number
+          news_filter_enabled: boolean
+          risk_per_trade: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          automation_mode?: string
+          circuit_breaker_enabled?: boolean
+          confidence_threshold?: number
+          created_at?: string
+          daily_profit_lock?: number
+          id?: string
+          kill_switch_active?: boolean
+          max_daily_loss?: number
+          max_trades_per_day?: number
+          news_filter_enabled?: boolean
+          risk_per_trade?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          automation_mode?: string
+          circuit_breaker_enabled?: boolean
+          confidence_threshold?: number
+          created_at?: string
+          daily_profit_lock?: number
+          id?: string
+          kill_switch_active?: boolean
+          max_daily_loss?: number
+          max_trades_per_day?: number
+          news_filter_enabled?: boolean
+          risk_per_trade?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          analysis_id: string | null
+          closed_at: string | null
+          confidence: number | null
+          direction: string
+          entry_price: number
+          execution_mode: string
+          id: string
+          lot_size: number
+          notes: string | null
+          opened_at: string
+          outcome: string | null
+          pair: string
+          pnl: number | null
+          risk_reward: number | null
+          status: string
+          stop_loss: number
+          take_profit: number
+          user_id: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          closed_at?: string | null
+          confidence?: number | null
+          direction: string
+          entry_price: number
+          execution_mode?: string
+          id?: string
+          lot_size?: number
+          notes?: string | null
+          opened_at?: string
+          outcome?: string | null
+          pair: string
+          pnl?: number | null
+          risk_reward?: number | null
+          status?: string
+          stop_loss: number
+          take_profit: number
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string | null
+          closed_at?: string | null
+          confidence?: number | null
+          direction?: string
+          entry_price?: number
+          execution_mode?: string
+          id?: string
+          lot_size?: number
+          notes?: string | null
+          opened_at?: string
+          outcome?: string | null
+          pair?: string
+          pnl?: number | null
+          risk_reward?: number | null
+          status?: string
+          stop_loss?: number
+          take_profit?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trades_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
