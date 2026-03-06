@@ -3,11 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Play, Square, AlertTriangle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Play, Square, AlertTriangle, TrendingUp, TrendingDown, Loader2, Wifi, WifiOff } from "lucide-react";
+import { useState, useEffect } from "react";
 import { AnalysisResult } from "@/types/analysis";
 import { RiskSettings, Trade } from "@/types/trading";
 import { useToast } from "@/hooks/use-toast";
+import { useMetaTrader } from "@/hooks/useMetaTrader";
 
 interface TradeExecutionPanelProps {
   analysis: AnalysisResult | null;
@@ -28,7 +30,16 @@ export function TradeExecutionPanel({
 }: TradeExecutionPanelProps) {
   const [executing, setExecuting] = useState(false);
   const [lotSize, setLotSize] = useState('0.01');
+  const [liveMode, setLiveMode] = useState(false);
   const { toast } = useToast();
+  const { accountInfo, connected, loading: mtLoading, getAccountInfo, executeLiveTrade } = useMetaTrader();
+
+  // Check MT connection when switching to live mode
+  useEffect(() => {
+    if (liveMode && !connected && !mtLoading) {
+      getAccountInfo();
+    }
+  }, [liveMode, connected, mtLoading, getAccountInfo]);
 
   if (!analysis) return null;
 
@@ -67,30 +78,45 @@ export function TradeExecutionPanel({
     try {
       const slPrice = parseFloat(analysis.stopLoss) || 0;
       const tpPrice = parseFloat(analysis.takeProfit) || 0;
-      const entryPrice = slPrice && tpPrice ? (slPrice + tpPrice) / 2 : 0;
-      const rr = slPrice && tpPrice && entryPrice
-        ? Math.abs(tpPrice - entryPrice) / Math.abs(entryPrice - slPrice)
-        : 0;
 
-      const { error } = await onExecuteTrade({
-        analysis_id: analysis.id,
-        pair: analysis.pair,
-        direction,
-        entry_price: entryPrice,
-        stop_loss: slPrice,
-        take_profit: tpPrice,
-        lot_size: parseFloat(lotSize),
-        execution_mode: riskSettings?.automation_mode || 'manual',
-        risk_reward: Math.round(rr * 100) / 100,
-        confidence: analysis.probability,
-      });
+      if (liveMode) {
+        // Live execution via MetaApi
+        const result = await executeLiveTrade({
+          symbol: analysis.pair,
+          direction: direction as 'BUY' | 'SELL',
+          volume: parseFloat(lotSize),
+          stopLoss: slPrice > 0 ? slPrice : undefined,
+          takeProfit: tpPrice > 0 ? tpPrice : undefined,
+        });
 
-      if (error) throw error;
+        if (!result.success) throw new Error(result.error);
+      } else {
+        // Paper trade
+        const entryPrice = slPrice && tpPrice ? (slPrice + tpPrice) / 2 : 0;
+        const rr = slPrice && tpPrice && entryPrice
+          ? Math.abs(tpPrice - entryPrice) / Math.abs(entryPrice - slPrice)
+          : 0;
 
-      toast({
-        title: "Paper Trade Opened",
-        description: `${direction} ${analysis.pair} @ ${entryPrice.toFixed(5)} | Lot: ${lotSize}`,
-      });
+        const { error } = await onExecuteTrade({
+          analysis_id: analysis.id,
+          pair: analysis.pair,
+          direction,
+          entry_price: entryPrice,
+          stop_loss: slPrice,
+          take_profit: tpPrice,
+          lot_size: parseFloat(lotSize),
+          execution_mode: riskSettings?.automation_mode || 'manual',
+          risk_reward: Math.round(rr * 100) / 100,
+          confidence: analysis.probability,
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Paper Trade Opened",
+          description: `${direction} ${analysis.pair} @ ${entryPrice.toFixed(5)} | Lot: ${lotSize}`,
+        });
+      }
     } catch (err: any) {
       toast({
         title: "Execution Failed",
@@ -110,10 +136,73 @@ export function TradeExecutionPanel({
             <Play className="h-5 w-5 text-primary" />
             Trade Execution
           </span>
-          <Badge variant="outline" className="text-xs">Paper Trading</Badge>
+          <div className="flex items-center gap-2">
+            {liveMode && (
+              connected ? (
+                <Badge variant="outline" className="text-xs border-emerald-500/50 text-emerald-400">
+                  <Wifi className="h-3 w-3 mr-1" />
+                  MT Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">
+                  <WifiOff className="h-3 w-3 mr-1" />
+                  Disconnected
+                </Badge>
+              )
+            )}
+            <Badge variant={liveMode ? "destructive" : "outline"} className="text-xs">
+              {liveMode ? '🔴 LIVE' : 'Paper'}
+            </Badge>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Live/Paper Toggle */}
+        <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 border border-border/50">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Live Trading</Label>
+            <p className="text-xs text-muted-foreground">
+              {liveMode ? 'Trades execute on your MT account' : 'Simulated paper trades'}
+            </p>
+          </div>
+          <Switch
+            checked={liveMode}
+            onCheckedChange={setLiveMode}
+          />
+        </div>
+
+        {/* Account Info (Live mode) */}
+        {liveMode && accountInfo && (
+          <div className="grid grid-cols-2 gap-2 p-3 rounded-lg bg-secondary/30 text-xs">
+            <div>
+              <span className="text-muted-foreground">Balance:</span>
+              <span className="ml-1 font-mono font-semibold">${accountInfo.balance?.toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Equity:</span>
+              <span className="ml-1 font-mono font-semibold">${accountInfo.equity?.toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Free Margin:</span>
+              <span className="ml-1 font-mono font-semibold">${accountInfo.freeMargin?.toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Leverage:</span>
+              <span className="ml-1 font-mono font-semibold">1:{accountInfo.leverage}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Live mode warning */}
+        {liveMode && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-400">
+              <strong>Real money at risk.</strong> Trades will execute on your live MetaTrader account.
+            </p>
+          </div>
+        )}
+
         {/* Signal Summary */}
         <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
           <div className="flex items-center gap-2">
@@ -166,25 +255,27 @@ export function TradeExecutionPanel({
         {/* Execute Button */}
         <Button
           onClick={handleExecute}
-          disabled={executing || direction === 'WAIT' || !!riskBlocked}
+          disabled={executing || mtLoading || direction === 'WAIT' || !!riskBlocked || (liveMode && !connected)}
           className="w-full"
           variant={direction === 'BUY' ? 'default' : direction === 'SELL' ? 'destructive' : 'secondary'}
         >
-          {executing ? (
+          {executing || mtLoading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Executing...
+              {mtLoading ? 'Connecting...' : 'Executing...'}
             </>
           ) : (
             <>
               <Play className="h-4 w-4 mr-2" />
-              Execute Paper Trade
+              {liveMode ? 'Execute Live Trade' : 'Execute Paper Trade'}
             </>
           )}
         </Button>
 
         <p className="text-xs text-center text-muted-foreground">
-          Paper trading mode — no real money at risk
+          {liveMode
+            ? '⚠️ Live trading — real funds will be used'
+            : 'Paper trading mode — no real money at risk'}
         </p>
       </CardContent>
     </Card>
