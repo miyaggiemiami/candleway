@@ -86,6 +86,42 @@ export type Database = {
         }
         Relationships: []
       }
+      metatrader_settings: {
+        Row: {
+          account_id: string
+          api_token: string
+          created_at: string
+          id: string
+          is_connected: boolean
+          platform: string
+          server_region: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string
+          api_token?: string
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          platform?: string
+          server_region?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          api_token?: string
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          platform?: string
+          server_region?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
