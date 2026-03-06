@@ -12,7 +12,6 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -35,19 +34,28 @@ serve(async (req) => {
 
     const { action, symbol, volume, stopLoss, takeProfit, direction, tradeId } = await req.json();
 
-    const metaapiToken = Deno.env.get('METAAPI_TOKEN');
-    const metaapiAccountId = Deno.env.get('METAAPI_ACCOUNT_ID');
+    // Fetch user's MetaTrader settings from DB
+    const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const { data: mtSettings } = await serviceClient
+      .from('metatrader_settings')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // Use per-user credentials, fall back to global env secrets
+    const metaapiToken = mtSettings?.api_token || Deno.env.get('METAAPI_TOKEN');
+    const metaapiAccountId = mtSettings?.account_id || Deno.env.get('METAAPI_ACCOUNT_ID');
+    const serverRegion = mtSettings?.server_region || 'new-york';
 
     if (!metaapiToken || !metaapiAccountId) {
-      return new Response(JSON.stringify({ error: 'MetaApi credentials not configured' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'MetaTrader not configured. Add your credentials in Settings.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const baseUrl = `https://mt-client-api-v1.new-york.agiliumtrade.ai/users/current/accounts/${metaapiAccountId}`;
+    const baseUrl = `https://mt-client-api-v1.${serverRegion}.agiliumtrade.ai/users/current/accounts/${metaapiAccountId}`;
 
     if (action === 'get-account-info') {
-      // Get account information
       const res = await fetch(`${baseUrl}/account-information`, {
         headers: { 'auth-token': metaapiToken, 'Accept': 'application/json' },
       });
@@ -63,9 +71,7 @@ serve(async (req) => {
     }
 
     if (action === 'execute-trade') {
-      // Normalize symbol: "EUR/USD" -> "EURUSD", "XAU/USD" -> "XAUUSD" etc.
       const normalizedSymbol = symbol.replace('/', '');
-
       const actionType = direction === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL';
 
       const tradePayload: Record<string, unknown> = {
@@ -101,12 +107,9 @@ serve(async (req) => {
         });
       }
 
-      // Log to trades table
-      const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-      
       const slPrice = stopLoss || 0;
       const tpPrice = takeProfit || 0;
-      const entryPrice = data.orderId ? 0 : (slPrice + tpPrice) / 2; // Will be updated when filled
+      const entryPrice = data.orderId ? 0 : (slPrice + tpPrice) / 2;
 
       await serviceClient.from('trades').insert({
         user_id: user.id,

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   User, 
   Crown, 
@@ -16,15 +17,52 @@ import {
   Mail, 
   HelpCircle,
   ExternalLink,
-  LogOut
+  LogOut,
+  Wifi,
+  WifiOff,
+  Loader2,
+  Monitor
 } from "lucide-react";
 import { useState } from "react";
+import { useMetaTraderSettings } from "@/hooks/useMetaTraderSettings";
 
 export default function Settings() {
   const [darkMode, setDarkMode] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [email, setEmail] = useState("trader@example.com");
   const [name, setName] = useState("Trader");
+  
+  const { settings: mtSettings, loading: mtLoading, saving: mtSaving, saveSettings: saveMtSettings, testConnection } = useMetaTraderSettings();
+  const [mtAccountId, setMtAccountId] = useState('');
+  const [mtApiToken, setMtApiToken] = useState('');
+  const [mtRegion, setMtRegion] = useState('new-york');
+  const [mtPlatform, setMtPlatform] = useState('mt5');
+  const [mtTesting, setMtTesting] = useState(false);
+
+  // Populate fields when settings load
+  const [initialized, setInitialized] = useState(false);
+  if (mtSettings && !initialized) {
+    setMtAccountId(mtSettings.account_id);
+    setMtApiToken(mtSettings.api_token);
+    setMtRegion(mtSettings.server_region);
+    setMtPlatform(mtSettings.platform);
+    setInitialized(true);
+  }
+
+  const handleMtSave = async () => {
+    await saveMtSettings({
+      account_id: mtAccountId,
+      api_token: mtApiToken,
+      server_region: mtRegion,
+      platform: mtPlatform,
+    });
+  };
+
+  const handleMtTest = async () => {
+    setMtTesting(true);
+    await testConnection();
+    setMtTesting(false);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -132,6 +170,88 @@ export default function Settings() {
                 </div>
               </div>
               <Switch checked={notifications} onCheckedChange={setNotifications} />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* MetaTrader Connection */}
+        <Card className="glass-card mb-6 border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Monitor className="h-5 w-5 text-primary" />
+              MetaTrader Connection
+              {mtSettings?.is_connected ? (
+                <Badge variant="outline" className="ml-auto text-xs border-emerald-500/50 text-emerald-400">
+                  <Wifi className="h-3 w-3 mr-1" /> Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="ml-auto text-xs border-muted-foreground/50">
+                  <WifiOff className="h-3 w-3 mr-1" /> Not Connected
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>Connect your MetaTrader account via MetaApi for live trading</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="mt-account-id">MetaApi Account ID</Label>
+              <Input
+                id="mt-account-id"
+                value={mtAccountId}
+                onChange={(e) => setMtAccountId(e.target.value)}
+                placeholder="e.g. a1b2c3d4-e5f6-..."
+                className="glass-card font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Find this in your MetaApi dashboard under Accounts</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mt-api-token">MetaApi API Token</Label>
+              <Input
+                id="mt-api-token"
+                type="password"
+                value={mtApiToken}
+                onChange={(e) => setMtApiToken(e.target.value)}
+                placeholder="Your MetaApi token"
+                className="glass-card font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Generate at metaapi.cloud → API Access</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Platform</Label>
+                <Select value={mtPlatform} onValueChange={setMtPlatform}>
+                  <SelectTrigger className="glass-card">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mt5">MetaTrader 5</SelectItem>
+                    <SelectItem value="mt4">MetaTrader 4</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Server Region</Label>
+                <Select value={mtRegion} onValueChange={setMtRegion}>
+                  <SelectTrigger className="glass-card">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new-york">New York</SelectItem>
+                    <SelectItem value="london">London</SelectItem>
+                    <SelectItem value="singapore">Singapore</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button onClick={handleMtSave} disabled={mtSaving || !mtAccountId || !mtApiToken} className="flex-1">
+                {mtSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Credentials
+              </Button>
+              <Button variant="outline" onClick={handleMtTest} disabled={mtTesting || !mtAccountId || !mtApiToken}>
+                {mtTesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="h-4 w-4 mr-2" />}
+                Test
+              </Button>
             </div>
           </CardContent>
         </Card>
