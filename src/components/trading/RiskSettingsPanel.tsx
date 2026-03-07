@@ -15,9 +15,9 @@ interface RiskSettingsPanelProps {
 }
 
 export function RiskSettingsPanel({ settings, onUpdate, tier }: RiskSettingsPanelProps) {
-  const canUseAdvancedRisk = tier === 'premium' || tier === 'pro';
-  const canUseAssisted = tier === 'premium' || tier === 'pro';
-  const canUseAuto = tier === 'pro';
+  const canUseAdvancedRisk = true;
+  const canUseAssisted = true;
+  const canUseAuto = true;
 
   return (
     <Card className="glass-card">
@@ -119,11 +119,11 @@ export function RiskSettingsPanel({ settings, onUpdate, tier }: RiskSettingsPane
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="manual">Manual (Execute yourself)</SelectItem>
-              <SelectItem value="assisted" disabled={!canUseAssisted}>
-                Assisted (Confirm before send) {!canUseAssisted && '🔒 Premium'}
+              <SelectItem value="assisted">
+                Assisted (Confirm before send)
               </SelectItem>
-              <SelectItem value="auto" disabled={!canUseAuto}>
-                Full Auto (Paper Trading) {!canUseAuto && '🔒 Pro'}
+              <SelectItem value="auto">
+                Full Auto (Paper Trading)
               </SelectItem>
             </SelectContent>
           </Select>

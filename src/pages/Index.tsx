@@ -12,6 +12,7 @@ import { TradeExecutionPanel } from "@/components/trading/TradeExecutionPanel";
 import { OpenTradesPanel } from "@/components/trading/OpenTradesPanel";
 import { RiskSettingsPanel } from "@/components/trading/RiskSettingsPanel";
 import { RiskConsentDialog } from "@/components/trading/RiskConsentDialog";
+import { MetaTraderWidget } from "@/components/dashboard/MetaTraderWidget";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
@@ -285,7 +286,8 @@ export default function Index() {
                   </div>
                 </section>
 
-                {/* Open Trades & Recent */}
+                {/* MT Widget + Open Trades + Recent */}
+                {user && <MetaTraderWidget />}
                 <div className="grid gap-6 lg:grid-cols-2">
                   <OpenTradesPanel 
                     trades={trades} 
