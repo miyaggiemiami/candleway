@@ -123,8 +123,14 @@ export default function Index() {
         return;
       }
 
-      if (data.error) {
+      if (data?.error) {
         toast({ title: "Analysis Failed", description: data.error, variant: "destructive" });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (!data) {
+        toast({ title: "Analysis Failed", description: "No response from AI service.", variant: "destructive" });
         setIsAnalyzing(false);
         return;
       }
