@@ -49,7 +49,7 @@ serve(async (req) => {
 
     if (!metaapiToken || !metaapiAccountId) {
       return new Response(JSON.stringify({ error: 'MetaTrader not configured. Add your credentials in Settings.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
