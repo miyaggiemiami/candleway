@@ -4,10 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Play, Square, AlertTriangle, TrendingUp, TrendingDown, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Play, Square, AlertTriangle, TrendingUp, TrendingDown, Loader2, Wifi, WifiOff, Hand, Bot, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AnalysisResult } from "@/types/analysis";
-import { RiskSettings, Trade } from "@/types/trading";
+import { RiskSettings, Trade, AutomationMode } from "@/types/trading";
 import { useToast } from "@/hooks/use-toast";
 import { useMetaTrader } from "@/hooks/useMetaTrader";
 
@@ -20,6 +20,24 @@ interface TradeExecutionPanelProps {
   onRequestConsent: () => void;
 }
 
+const MODE_CONFIG: Record<AutomationMode, { label: string; icon: typeof Hand; description: string }> = {
+  manual: {
+    label: 'Manual',
+    icon: Hand,
+    description: 'You review and execute trades yourself',
+  },
+  assisted: {
+    label: 'Assisted',
+    icon: Bot,
+    description: 'AI prepares trade, you confirm before sending',
+  },
+  auto: {
+    label: 'Auto Trade',
+    icon: Zap,
+    description: 'Paper trade executes automatically',
+  },
+};
+
 export function TradeExecutionPanel({
   analysis,
   riskSettings,
@@ -31,6 +49,8 @@ export function TradeExecutionPanel({
   const [executing, setExecuting] = useState(false);
   const [lotSize, setLotSize] = useState('0.01');
   const [liveMode, setLiveMode] = useState(false);
+  const [tradeMode, setTradeMode] = useState<AutomationMode>('manual');
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const { toast } = useToast();
   const { accountInfo, connected, loading: mtLoading, getAccountInfo, executeLiveTrade } = useMetaTrader();
 
@@ -40,6 +60,14 @@ export function TradeExecutionPanel({
       getAccountInfo();
     }
   }, [liveMode, connected, mtLoading, getAccountInfo]);
+
+  // Auto-execute for 'auto' mode when analysis arrives
+  useEffect(() => {
+    if (tradeMode === 'auto' && analysis && analysis.bias !== 'No Trade') {
+      handleExecuteInternal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, tradeMode]);
 
   if (!analysis) return null;
 
@@ -59,7 +87,7 @@ export function TradeExecutionPanel({
     null
   ) : null;
 
-  const handleExecute = async () => {
+  async function handleExecuteInternal() {
     if (!hasConsented) {
       onRequestConsent();
       return;
@@ -74,13 +102,14 @@ export function TradeExecutionPanel({
       return;
     }
 
+    if (riskBlocked) return;
+
     setExecuting(true);
     try {
       const slPrice = parseFloat(analysis.stopLoss) || 0;
       const tpPrice = parseFloat(analysis.takeProfit) || 0;
 
       if (liveMode) {
-        // Live execution via MetaApi
         const result = await executeLiveTrade({
           symbol: analysis.pair,
           direction: direction as 'BUY' | 'SELL',
@@ -88,10 +117,8 @@ export function TradeExecutionPanel({
           stopLoss: slPrice > 0 ? slPrice : undefined,
           takeProfit: tpPrice > 0 ? tpPrice : undefined,
         });
-
         if (!result.success) throw new Error(result.error);
       } else {
-        // Paper trade
         const entryPrice = slPrice && tpPrice ? (slPrice + tpPrice) / 2 : 0;
         const rr = slPrice && tpPrice && entryPrice
           ? Math.abs(tpPrice - entryPrice) / Math.abs(entryPrice - slPrice)
@@ -105,7 +132,7 @@ export function TradeExecutionPanel({
           stop_loss: slPrice,
           take_profit: tpPrice,
           lot_size: parseFloat(lotSize),
-          execution_mode: riskSettings?.automation_mode || 'manual',
+          execution_mode: tradeMode,
           risk_reward: Math.round(rr * 100) / 100,
           confidence: analysis.probability,
         });
@@ -113,7 +140,7 @@ export function TradeExecutionPanel({
         if (error) throw error;
 
         toast({
-          title: "Paper Trade Opened",
+          title: tradeMode === 'auto' ? "Auto Trade Executed" : "Paper Trade Opened",
           description: `${direction} ${analysis.pair} @ ${entryPrice.toFixed(5)} | Lot: ${lotSize}`,
         });
       }
@@ -125,7 +152,16 @@ export function TradeExecutionPanel({
       });
     } finally {
       setExecuting(false);
+      setAwaitingConfirm(false);
     }
+  }
+
+  const handleExecute = async () => {
+    if (tradeMode === 'assisted' && !awaitingConfirm) {
+      setAwaitingConfirm(true);
+      return;
+    }
+    await handleExecuteInternal();
   };
 
   return (
@@ -157,6 +193,38 @@ export function TradeExecutionPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Trade Mode Selector */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Execution Mode</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(MODE_CONFIG) as AutomationMode[]).map((mode) => {
+              const config = MODE_CONFIG[mode];
+              const Icon = config.icon;
+              const isActive = tradeMode === mode;
+              return (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setTradeMode(mode);
+                    setAwaitingConfirm(false);
+                  }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs transition-all ${
+                    isActive
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border/50 bg-secondary/30 text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="font-semibold">{config.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            {MODE_CONFIG[tradeMode].description}
+          </p>
+        </div>
+
         {/* Live/Paper Toggle */}
         <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 border border-border/50">
           <div className="space-y-0.5">
@@ -252,25 +320,58 @@ export function TradeExecutionPanel({
           </div>
         )}
 
+        {/* Assisted mode confirmation */}
+        {awaitingConfirm && tradeMode === 'assisted' && (
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-2">
+            <p className="text-sm text-amber-400 font-medium">
+              ⚡ Confirm this trade?
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {direction} {analysis.pair} | Lot: {lotSize} | SL: {analysis.stopLoss} | TP: {analysis.takeProfit}
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleExecuteInternal} disabled={executing}>
+                {executing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                Confirm & Send
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setAwaitingConfirm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Execute Button */}
-        <Button
-          onClick={handleExecute}
-          disabled={executing || mtLoading || direction === 'WAIT' || !!riskBlocked || (liveMode && !connected)}
-          className="w-full"
-          variant={direction === 'BUY' ? 'default' : direction === 'SELL' ? 'destructive' : 'secondary'}
-        >
-          {executing || mtLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              {mtLoading ? 'Connecting...' : 'Executing...'}
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4 mr-2" />
-              {liveMode ? 'Execute Live Trade' : 'Execute Paper Trade'}
-            </>
-          )}
-        </Button>
+        {tradeMode !== 'auto' && !awaitingConfirm && (
+          <Button
+            onClick={handleExecute}
+            disabled={executing || mtLoading || direction === 'WAIT' || !!riskBlocked || (liveMode && !connected)}
+            className="w-full"
+            variant={direction === 'BUY' ? 'default' : direction === 'SELL' ? 'destructive' : 'secondary'}
+          >
+            {executing || mtLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                {mtLoading ? 'Connecting...' : 'Executing...'}
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                {tradeMode === 'assisted'
+                  ? 'Prepare Trade'
+                  : liveMode ? 'Execute Live Trade' : 'Execute Paper Trade'}
+              </>
+            )}
+          </Button>
+        )}
+
+        {tradeMode === 'auto' && (
+          <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/30">
+            <p className="text-xs text-primary font-medium">
+              ⚡ Auto mode active — trades execute automatically when signals meet your risk criteria
+            </p>
+          </div>
+        )}
 
         <p className="text-xs text-center text-muted-foreground">
           {liveMode
