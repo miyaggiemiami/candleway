@@ -49,7 +49,7 @@ serve(async (req) => {
 
     if (!metaapiToken || !metaapiAccountId) {
       return new Response(JSON.stringify({ error: 'MetaTrader not configured. Add your credentials in Settings.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -62,7 +62,7 @@ serve(async (req) => {
       const data = await res.json();
       if (!res.ok) {
         return new Response(JSON.stringify({ error: data.message || 'Failed to get account info' }), {
-          status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       return new Response(JSON.stringify({ success: true, account: data }), {
