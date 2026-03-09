@@ -62,7 +62,7 @@ serve(async (req) => {
       const data = await res.json();
       if (!res.ok) {
         return new Response(JSON.stringify({ error: data.message || 'Failed to get account info' }), {
-          status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       return new Response(JSON.stringify({ success: true, account: data }), {

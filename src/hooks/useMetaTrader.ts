@@ -33,11 +33,15 @@ export function useMetaTrader() {
       return data.account;
     } catch (err: any) {
       setConnected(false);
-      toast({
-        title: 'MT Connection Failed',
-        description: err.message || 'Could not connect to MetaTrader account.',
-        variant: 'destructive',
-      });
+      // Only show toast if it's not a "not configured" error (silent fail for unconfigured users)
+      const msg = err.message || '';
+      if (!msg.includes('not configured') && !msg.includes('Not configured')) {
+        toast({
+          title: 'MT Connection Failed',
+          description: msg || 'Could not connect to MetaTrader account.',
+          variant: 'destructive',
+        });
+      }
       return null;
     } finally {
       setLoading(false);
