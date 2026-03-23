@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app = express();
@@ -23,13 +24,11 @@ function supabaseFunctionHeaders(authHeader?: string) {
   };
 }
 
+// ── AI: Chart Analysis ────────────────────────────────────────────────────────
 app.post("/api/analyze-chart", async (req, res) => {
   try {
     const { imageBase64, pair, timeframe, style } = req.body;
-
-    if (!imageBase64) {
-      return res.json({ error: "No image provided" });
-    }
+    if (!imageBase64) return res.json({ error: "No image provided" });
 
     const genAI = getGemini();
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -48,12 +47,12 @@ ANALYSIS FRAMEWORK:
 7. Breakout/Fakeout Assessment: Volume context and structural validity
 
 DECISION RULES:
-- direction: BUY only if multiple confluences align bullish. SELL only if bearish confluences align. WAIT if confluence is weak, mixed, or unclear.
-- confidence: 0-100. Reduce for poor chart clarity, mixed signals, or ranging markets. Only 80+ for strong multi-factor confluence.
-- risk_level: Low (clear trend + pattern), Medium (some confluence), High (counter-trend or unclear)
+- direction: BUY only if multiple confluences align bullish. SELL only if bearish. WAIT if unclear.
+- confidence: 0-100. Only 80+ for strong multi-factor confluence.
+- risk_level: Low (clear trend + pattern), Medium (some confluence), High (unclear)
 - NEVER guarantee profit. If analysis is unclear direction must be WAIT.
 
-Return ONLY valid JSON in this exact structure (no markdown, no extra text):
+Return ONLY valid JSON (no markdown, no extra text):
 {
   "direction": "BUY" | "SELL" | "WAIT",
   "trend": "Uptrend" | "Downtrend" | "Sideways",
@@ -62,13 +61,13 @@ Return ONLY valid JSON in this exact structure (no markdown, no extra text):
   "probability": <number 0-100>,
   "risk_level": "Low" | "Medium" | "High",
   "riskScore": <number 1-10>,
-  "entry": "<specific price level>",
-  "stop_loss": "<specific price level>",
-  "take_profit": "<specific price level>",
+  "entry": "<price level>",
+  "stop_loss": "<price level>",
+  "take_profit": "<price level>",
   "risk_reward": "<ratio like 1:2.5>",
   "supportLevels": ["level1", "level2", "level3"],
   "resistanceLevels": ["level1", "level2", "level3"],
-  "marketStructure": "<HH/HL/LH/LL description>",
+  "marketStructure": "<description>",
   "detectedPatterns": ["pattern1", "pattern2"],
   "supplyDemandZones": ["zone1", "zone2"],
   "possibleOutcomes": [
@@ -76,7 +75,7 @@ Return ONLY valid JSON in this exact structure (no markdown, no extra text):
     {"scenario": "Bearish", "probability": 30, "description": "..."},
     {"scenario": "Sideways", "probability": 10, "description": "..."}
   ],
-  "reasoning": "<detailed institutional-grade explanation>"
+  "reasoning": "<detailed explanation>"
 }`;
 
     let imagePart: any;
@@ -90,7 +89,7 @@ Return ONLY valid JSON in this exact structure (no markdown, no extra text):
 
     const result = await model.generateContent([
       systemPrompt,
-      `Analyze this ${pair} chart on ${timeframe} timeframe for ${style} trading. Return structured JSON only.`,
+      `Analyze this ${pair} chart on ${timeframe} for ${style} trading. Return JSON only.`,
       imagePart,
     ]);
 
@@ -116,7 +115,7 @@ Return ONLY valid JSON in this exact structure (no markdown, no extra text):
       possibleOutcomes = possibleOutcomes.map((o: any) => `${o.scenario} (${o.probability}%): ${o.description}`);
     }
 
-    const finalResult = {
+    return res.json({
       ...analysis,
       possibleOutcomes,
       pair,
@@ -127,133 +126,128 @@ Return ONLY valid JSON in this exact structure (no markdown, no extra text):
       probability: analysis.confidence || analysis.probability || 50,
       riskScore: analysis.riskScore || (analysis.risk_level === "Low" ? 3 : analysis.risk_level === "Medium" ? 5 : 8),
       disclaimer: "Not financial advice. Probability-based analysis only. AI is not guaranteed. Always manage your risk.",
-    };
-
-    return res.json(finalResult);
+    });
   } catch (error: any) {
     console.error("Error in analyze-chart:", error);
     return res.json({ error: error.message || "An unexpected error occurred" });
   }
 });
 
+// ── AI: Chat ──────────────────────────────────────────────────────────────────
 app.post("/api/ai-chat", async (req, res) => {
   try {
     const { messages } = req.body;
-
     const genAI = getGemini();
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash",
-      systemInstruction: `You are CandleWay AI, a friendly trading assistant built into the CandleWay platform. You help users with:
+      systemInstruction: `You are CandleWay AI, a friendly trading assistant. You help users with:
 - Understanding chart analysis results (trend, bias, support/resistance, patterns)
 - Explaining trading concepts (lot sizing, risk-reward, stop loss, take profit)
-- Guiding them through the app features (chart upload, analysis, trade execution modes: Manual, Assisted, Auto Trade)
-- MetaTrader connection setup via Settings page (MetaApi credentials)
+- Guiding them through app features (chart upload, analysis, Manual/Assisted/Auto Trade modes)
+- MetaTrader connection setup via Settings (MetaApi credentials)
 - Risk management settings (confidence threshold, max daily trades, kill switch)
 - Subscription and pricing questions
 
-Keep answers concise, practical, and beginner-friendly. Use trading terminology but explain it simply.
-Never give specific financial advice or guarantee profits. Always remind users that trading involves risk.
+Keep answers concise, practical, and beginner-friendly.
+Never give specific financial advice or guarantee profits. Always remind users trading involves risk.
 Format responses with markdown when helpful.`,
     });
 
-    const history = messages.slice(0, -1).map((m: any) => ({
+    const history = (messages || []).slice(0, -1).map((m: any) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     }));
-
-    const lastMessage = messages[messages.length - 1];
-    const chat = model.startChat({ history });
+    const lastMessage = messages?.[messages.length - 1];
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    const chat = model.startChat({ history });
     const streamResult = await chat.sendMessageStream(lastMessage?.content || "");
 
     for await (const chunk of streamResult.stream) {
       const text = chunk.text();
       if (text) {
-        const data = JSON.stringify({ choices: [{ delta: { content: text } }] });
-        res.write(`data: ${data}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
       }
     }
-
     res.write("data: [DONE]\n\n");
     res.end();
   } catch (e: any) {
     console.error("ai-chat error:", e);
-    if (!res.headersSent) {
-      return res.status(500).json({ error: e.message || "Unknown error" });
-    }
+    if (!res.headersSent) return res.status(500).json({ error: e.message || "Unknown error" });
     res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
     res.end();
   }
 });
 
+// ── Supabase Function Proxies ─────────────────────────────────────────────────
 app.post("/api/check-subscription", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
+  const authHeader = req.headers.authorization as string;
+  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/check-subscription`, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(authHeader),
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/check-subscription`, {
+      method: "POST", headers: supabaseFunctionHeaders(authHeader),
     });
-    const data = await response.json();
-    return res.status(response.status).json(data);
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message });
-  }
+    return res.status(r.status).json(await r.json());
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 
 app.post("/api/create-checkout", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
+  const authHeader = req.headers.authorization as string;
+  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(authHeader),
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+      method: "POST", headers: supabaseFunctionHeaders(authHeader),
     });
-    const data = await response.json();
-    return res.status(response.status).json(data);
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message });
-  }
+    return res.status(r.status).json(await r.json());
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 
 app.post("/api/customer-portal", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
+  const authHeader = req.headers.authorization as string;
+  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/customer-portal`, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(authHeader),
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/customer-portal`, {
+      method: "POST", headers: supabaseFunctionHeaders(authHeader),
     });
-    const data = await response.json();
-    return res.status(response.status).json(data);
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message });
-  }
+    return res.status(r.status).json(await r.json());
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 
 app.post("/api/execute-metatrader-trade", async (req, res) => {
-  const authHeader = req.headers.authorization;
+  const authHeader = req.headers.authorization as string;
   if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-metatrader-trade`, {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/execute-metatrader-trade`, {
       method: "POST",
       headers: supabaseFunctionHeaders(authHeader),
       body: JSON.stringify(req.body),
     });
-    const data = await response.json();
-    return res.status(response.status).json(data);
-  } catch (e: any) {
-    return res.status(500).json({ error: e.message });
-  }
+    return res.status(r.status).json(await r.json());
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 
-const PORT = parseInt(process.env.API_PORT || "3001", 10);
+// ── Dev: proxy everything else to Vite ───────────────────────────────────────
+const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
+const isDev = process.env.NODE_ENV !== "production";
+
+if (isDev) {
+  app.use(
+    "/",
+    createProxyMiddleware({
+      target: `http://localhost:${VITE_PORT}`,
+      changeOrigin: true,
+      ws: true,
+    })
+  );
+}
+
+const PORT = parseInt(process.env.PORT || "5000", 10);
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`CandleWay API server running on port ${PORT}`);
+  console.log(`CandleWay server running on port ${PORT}`);
+  if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
 });
 
 export default app;
