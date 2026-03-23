@@ -2,6 +2,22 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+async function callMetaTraderAPI(body: object) {
+  const session = await supabase.auth.getSession();
+  const token = session.data.session?.access_token;
+  const response = await fetch('/api/execute-metatrader-trade', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
 interface AccountInfo {
   balance: number;
   equity: number;
@@ -22,10 +38,7 @@ export function useMetaTrader() {
   const getAccountInfo = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('execute-metatrader-trade', {
-        body: { action: 'get-account-info' },
-      });
-      if (error) throw error;
+      const data = await callMetaTraderAPI({ action: 'get-account-info' });
       if (data.error) throw new Error(data.error);
       
       setAccountInfo(data.account);
@@ -33,7 +46,6 @@ export function useMetaTrader() {
       return data.account;
     } catch (err: any) {
       setConnected(false);
-      // Only show toast if it's not a "not configured" error (silent fail for unconfigured users)
       const msg = err.message || '';
       if (!msg.includes('not configured') && !msg.includes('Not configured')) {
         toast({
@@ -57,10 +69,7 @@ export function useMetaTrader() {
   }) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('execute-metatrader-trade', {
-        body: { action: 'execute-trade', ...params },
-      });
-      if (error) throw error;
+      const data = await callMetaTraderAPI({ action: 'execute-trade', ...params });
       if (data.error) throw new Error(data.error);
 
       toast({
@@ -82,10 +91,7 @@ export function useMetaTrader() {
 
   const getPositions = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('execute-metatrader-trade', {
-        body: { action: 'get-positions' },
-      });
-      if (error) throw error;
+      const data = await callMetaTraderAPI({ action: 'get-positions' });
       return data.positions || [];
     } catch {
       return [];

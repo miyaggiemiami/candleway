@@ -113,12 +113,15 @@ export default function Index() {
     
     try {
       const imageBase64 = await convertFileToBase64(selectedFile);
-      const { data, error } = await supabase.functions.invoke('analyze-chart', {
-        body: { imageBase64, pair, timeframe, style },
+      const response = await fetch('/api/analyze-chart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, pair, timeframe, style }),
       });
+      const data = await response.json();
 
-      if (error) {
-        toast({ title: "Analysis Failed", description: error.message || "Failed to analyze chart.", variant: "destructive" });
+      if (!response.ok) {
+        toast({ title: "Analysis Failed", description: data.error || "Failed to analyze chart.", variant: "destructive" });
         setIsAnalyzing(false);
         return;
       }

@@ -3,6 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 
+async function callMetaTraderAPI(body: object) {
+  const session = await supabase.auth.getSession();
+  const token = session.data.session?.access_token;
+  const response = await fetch('/api/execute-metatrader-trade', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
 export interface MetaTraderConfig {
   id: string;
   user_id: string;
@@ -64,10 +80,8 @@ export function useMetaTraderSettings() {
   const testConnection = async () => {
     if (!user) return false;
     try {
-      const { data, error } = await supabase.functions.invoke('execute-metatrader-trade', {
-        body: { action: 'get-account-info' },
-      });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      const data = await callMetaTraderAPI({ action: 'get-account-info' });
+      if (data?.error) throw new Error(data.error);
 
       await supabase
         .from('metatrader_settings')

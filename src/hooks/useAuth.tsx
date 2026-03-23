@@ -85,10 +85,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const checkSubscription = async () => {
     if (!session) return;
     try {
-      const { data, error } = await supabase.functions.invoke('check-subscription', {
-        headers: { Authorization: `Bearer ${session.access_token}` }
+      const response = await fetch('/api/check-subscription', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (!error && data) {
+      if (response.ok) {
         await refreshProfile();
       }
     } catch (err) {
