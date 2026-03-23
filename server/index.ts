@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { createServer } from "http";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app = express();
 app.use(cors());
@@ -8,8 +8,12 @@ app.use(express.json({ limit: "20mb" }));
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY || "";
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || "";
+
+function getGemini() {
+  if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured. Add it in the Secrets tab.");
+  return new GoogleGenerativeAI(GOOGLE_API_KEY);
+}
 
 function supabaseFunctionHeaders(authHeader?: string) {
   return {
@@ -27,9 +31,8 @@ app.post("/api/analyze-chart", async (req, res) => {
       return res.json({ error: "No image provided" });
     }
 
-    if (!LOVABLE_API_KEY) {
-      return res.json({ error: "AI service not configured. Please add LOVABLE_API_KEY to secrets." });
-    }
+    const genAI = getGemini();
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const systemPrompt = `You are an institutional trading analyst with deep expertise in technical analysis, price action, and market microstructure.
 
@@ -49,9 +52,8 @@ DECISION RULES:
 - confidence: 0-100. Reduce for poor chart clarity, mixed signals, or ranging markets. Only 80+ for strong multi-factor confluence.
 - risk_level: Low (clear trend + pattern), Medium (some confluence), High (counter-trend or unclear)
 - NEVER guarantee profit. If analysis is unclear direction must be WAIT.
-- Confidence must genuinely reflect structure alignment, trend strength, momentum, and S/R confluence.
 
-IMPORTANT: Return ONLY valid JSON in this exact structure:
+Return ONLY valid JSON in this exact structure (no markdown, no extra text):
 {
   "direction": "BUY" | "SELL" | "WAIT",
   "trend": "Uptrend" | "Downtrend" | "Sideways",
@@ -77,45 +79,31 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
   "reasoning": "<detailed institutional-grade explanation>"
 }`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `Analyze this ${pair} chart on ${timeframe} timeframe for ${style} trading. Return structured JSON analysis.` },
-              { type: "image_url", image_url: { url: imageBase64 } },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) return res.json({ error: "Rate limit exceeded. Please try again later." });
-      if (response.status === 402) return res.json({ error: "AI credits exhausted. Please add credits to continue." });
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      return res.json({ error: "Failed to analyze chart" });
+    let imagePart: any;
+    if (imageBase64.startsWith("data:")) {
+      const [header, data] = imageBase64.split(",");
+      const mimeType = header.match(/data:([^;]+)/)?.[1] || "image/jpeg";
+      imagePart = { inlineData: { data, mimeType } };
+    } else {
+      imagePart = { inlineData: { data: imageBase64, mimeType: "image/jpeg" } };
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const result = await model.generateContent([
+      systemPrompt,
+      `Analyze this ${pair} chart on ${timeframe} timeframe for ${style} trading. Return structured JSON only.`,
+      imagePart,
+    ]);
 
+    const content = result.response.text();
     if (!content) return res.json({ error: "No analysis generated" });
 
-    let jsonStr = content;
+    let jsonStr = content.trim();
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) jsonStr = jsonMatch[1].trim();
+    const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (objectMatch) jsonStr = objectMatch[0];
 
-    let analysis;
+    let analysis: any;
     try {
       analysis = JSON.parse(jsonStr);
     } catch {
@@ -128,7 +116,7 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
       possibleOutcomes = possibleOutcomes.map((o: any) => `${o.scenario} (${o.probability}%): ${o.description}`);
     }
 
-    const result = {
+    const finalResult = {
       ...analysis,
       possibleOutcomes,
       pair,
@@ -141,7 +129,7 @@ IMPORTANT: Return ONLY valid JSON in this exact structure:
       disclaimer: "Not financial advice. Probability-based analysis only. AI is not guaranteed. Always manage your risk.",
     };
 
-    return res.json(result);
+    return res.json(finalResult);
   } catch (error: any) {
     console.error("Error in analyze-chart:", error);
     return res.json({ error: error.message || "An unexpected error occurred" });
@@ -152,22 +140,10 @@ app.post("/api/ai-chat", async (req, res) => {
   try {
     const { messages } = req.body;
 
-    if (!LOVABLE_API_KEY) {
-      return res.status(500).json({ error: "AI service not configured. Please add LOVABLE_API_KEY to secrets." });
-    }
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `You are CandleWay AI, a friendly trading assistant built into the CandleWay platform. You help users with:
+    const genAI = getGemini();
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: `You are CandleWay AI, a friendly trading assistant built into the CandleWay platform. You help users with:
 - Understanding chart analysis results (trend, bias, support/resistance, patterns)
 - Explaining trading concepts (lot sizing, risk-reward, stop loss, take profit)
 - Guiding them through the app features (chart upload, analysis, trade execution modes: Manual, Assisted, Auto Trade)
@@ -178,51 +154,45 @@ app.post("/api/ai-chat", async (req, res) => {
 Keep answers concise, practical, and beginner-friendly. Use trading terminology but explain it simply.
 Never give specific financial advice or guarantee profits. Always remind users that trading involves risk.
 Format responses with markdown when helpful.`,
-          },
-          ...messages,
-        ],
-        stream: true,
-      }),
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return res.status(429).json({ error: "Rate limit exceeded. Please try again shortly." });
-      }
-      if (response.status === 402) {
-        return res.status(402).json({ error: "AI credits exhausted. Please try again later." });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return res.status(500).json({ error: "AI service unavailable" });
-    }
+    const history = messages.slice(0, -1).map((m: any) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+
+    const lastMessage = messages[messages.length - 1];
+    const chat = model.startChat({ history });
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const reader = response.body!.getReader();
-    const pump = async () => {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          res.end();
-          break;
-        }
-        res.write(value);
+    const streamResult = await chat.sendMessageStream(lastMessage?.content || "");
+
+    for await (const chunk of streamResult.stream) {
+      const text = chunk.text();
+      if (text) {
+        const data = JSON.stringify({ choices: [{ delta: { content: text } }] });
+        res.write(`data: ${data}\n\n`);
       }
-    };
-    await pump();
+    }
+
+    res.write("data: [DONE]\n\n");
+    res.end();
   } catch (e: any) {
     console.error("ai-chat error:", e);
-    return res.status(500).json({ error: e.message || "Unknown error" });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: e.message || "Unknown error" });
+    }
+    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+    res.end();
   }
 });
 
 app.post("/api/check-subscription", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
-
   try {
     const response = await fetch(`${SUPABASE_URL}/functions/v1/check-subscription`, {
       method: "POST",
@@ -238,7 +208,6 @@ app.post("/api/check-subscription", async (req, res) => {
 app.post("/api/create-checkout", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
-
   try {
     const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
       method: "POST",
@@ -254,7 +223,6 @@ app.post("/api/create-checkout", async (req, res) => {
 app.post("/api/customer-portal", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "No authorization header provided" });
-
   try {
     const response = await fetch(`${SUPABASE_URL}/functions/v1/customer-portal`, {
       method: "POST",
@@ -270,7 +238,6 @@ app.post("/api/customer-portal", async (req, res) => {
 app.post("/api/execute-metatrader-trade", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
-
   try {
     const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-metatrader-trade`, {
       method: "POST",
