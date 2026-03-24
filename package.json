@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"tsx server/index.ts\" \"vite\"",
+    "predev": "node scripts/kill-ports.cjs",
+    "dev": "concurrently --kill-others false \"tsx server/index.ts\" \"vite\"",
     "dev:client": "vite",
     "dev:server": "tsx server/index.ts",
     "build": "vite build",

@@ -51,9 +51,6 @@ app.use("/api/risk-settings", riskSettingsRouter);
 app.use("/api/risk-consent", riskConsentRouter);
 app.use("/api/metatrader", metatraderRouter);
 
-// ── Stripe routes (mounted at /api for backward compat) ───────────────────────
-app.use("/api", stripeRouter);
-
 // ── Backward-compatible MetaTrader endpoint ───────────────────────────────────
 app.post("/api/execute-metatrader-trade", (req, res) => {
   req.url = "/trade";
@@ -259,6 +256,9 @@ Format responses with markdown when helpful.`;
   res.write(`data: ${JSON.stringify({ error: lastErr?.message })}\n\n`);
   res.end();
 });
+
+// ── Stripe routes (mounted last so they don't intercept open AI endpoints) ────
+app.use("/api", stripeRouter);
 
 // ── Dev: proxy everything else to Vite ───────────────────────────────────────
 const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
