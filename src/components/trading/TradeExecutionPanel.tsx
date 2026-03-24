@@ -87,6 +87,24 @@ export function TradeExecutionPanel({
     null
   ) : null;
 
+  async function waitForValidAnalysis(
+    analysisRef: AnalysisResult | null,
+    maxRetries = 3,
+    delayMs = 500,
+  ): Promise<AnalysisResult | null> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (analysisRef && analysisRef.id) {
+        return analysisRef;
+      }
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    const errorMsg = `Trade aborted: No valid chart analysis found for this symbol.`;
+    console.error(errorMsg);
+    return null;
+  }
+
   async function handleExecuteInternal() {
     if (!hasConsented) {
       onRequestConsent();
@@ -106,12 +124,22 @@ export function TradeExecutionPanel({
 
     setExecuting(true);
     try {
-      const slPrice = parseFloat(analysis.stopLoss) || 0;
-      const tpPrice = parseFloat(analysis.takeProfit) || 0;
+      const validAnalysis = await waitForValidAnalysis(analysis);
+      if (!validAnalysis) {
+        toast({
+          title: "Trade Aborted",
+          description: "No valid chart analysis found for this symbol. Please analyze a chart first.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const slPrice = parseFloat(validAnalysis.stopLoss) || 0;
+      const tpPrice = parseFloat(validAnalysis.takeProfit) || 0;
 
       if (liveMode) {
         const result = await executeLiveTrade({
-          symbol: analysis.pair,
+          symbol: validAnalysis.pair,
           direction: direction as 'BUY' | 'SELL',
           volume: parseFloat(lotSize),
           stopLoss: slPrice > 0 ? slPrice : undefined,
@@ -125,8 +153,8 @@ export function TradeExecutionPanel({
           : 0;
 
         const { error } = await onExecuteTrade({
-          analysis_id: analysis.id,
-          pair: analysis.pair,
+          analysis_id: validAnalysis.id,
+          pair: validAnalysis.pair,
           direction,
           entry_price: entryPrice,
           stop_loss: slPrice,
@@ -134,14 +162,14 @@ export function TradeExecutionPanel({
           lot_size: parseFloat(lotSize),
           execution_mode: tradeMode,
           risk_reward: Math.round(rr * 100) / 100,
-          confidence: analysis.probability,
+          confidence: validAnalysis.probability,
         });
 
         if (error) throw error;
 
         toast({
           title: tradeMode === 'auto' ? "Auto Trade Executed" : "Paper Trade Opened",
-          description: `${direction} ${analysis.pair} @ ${entryPrice.toFixed(5)} | Lot: ${lotSize}`,
+          description: `${direction} ${validAnalysis.pair} @ ${entryPrice.toFixed(5)} | Lot: ${lotSize}`,
         });
       }
     } catch (err: any) {

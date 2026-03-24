@@ -72,10 +72,10 @@ export default function Index() {
     });
   };
 
-  const saveAnalysisToDb = async (result: AnalysisResult) => {
-    if (!user) return;
+  const saveAnalysisToDb = async (result: AnalysisResult): Promise<string | null> => {
+    if (!user) return null;
     try {
-      await api.analyses.create({
+      const record = await api.analyses.create({
         pair: result.pair,
         timeframe: result.timeframe,
         style: result.style,
@@ -94,9 +94,11 @@ export default function Index() {
         take_profit: result.takeProfit,
         reasoning: result.reasoning,
         disclaimer: result.disclaimer,
-      });
+      }) as any;
+      return record?.id ?? null;
     } catch (err) {
       console.error('Error saving analysis:', err);
+      return null;
     }
   };
 
@@ -172,7 +174,8 @@ export default function Index() {
         disclaimer: data.disclaimer || "Not financial advice. Probability-based analysis only.",
       };
 
-      await saveAnalysisToDb(result);
+      const dbId = await saveAnalysisToDb(result);
+      if (dbId) result.id = dbId;
       await incrementDailyUsage();
       setAnalysisResult(result);
       
