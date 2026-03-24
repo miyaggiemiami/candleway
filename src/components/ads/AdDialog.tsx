@@ -108,7 +108,7 @@ export function AdDialog({ open, onOpenChange, onAdComplete, onUpgrade }: AdDial
               <div className="aspect-video bg-gradient-to-br from-primary/20 via-secondary to-primary/10 rounded-lg flex items-center justify-center border border-primary/20 relative overflow-hidden">
                 <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-20" />
                 <div className="text-center space-y-2 relative z-10">
-                  <div className="text-4xl font-bold gradient-text">CandleWay</div>
+                  <div className="text-4xl font-bold gradient-text">Apexium</div>
                   <p className="text-sm text-muted-foreground">AI-Powered Trading Analysis</p>
                   <p className="text-xs text-primary">Upgrade to Premium for ad-free experience</p>
                 </div>

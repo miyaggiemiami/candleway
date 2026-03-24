@@ -61,7 +61,7 @@ export function AnalysisResultDisplay({ result, onAnalyzeAnother }: AnalysisResu
   };
 
   const handleShare = async () => {
-    const shareText = `CandleWay Analysis\n\n` +
+    const shareText = `Apexium Analysis\n\n` +
       `📊 ${result.pair} | ${result.timeframe}\n` +
       `📈 Signal: ${result.bias} (${result.probability}%)\n` +
       `🎯 SL: ${result.stopLoss} | TP: ${result.takeProfit}\n` +
@@ -72,7 +72,7 @@ export function AnalysisResultDisplay({ result, onAnalyzeAnother }: AnalysisResu
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `CandleWay - ${result.pair} Analysis`,
+          title: `Apexium - ${result.pair} Analysis`,
           text: shareText,
         });
         toast({

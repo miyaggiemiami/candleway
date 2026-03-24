@@ -98,7 +98,7 @@ export default function Auth() {
       if (error.message.includes("already exists")) message = "An account with this email already exists. Please log in instead.";
       toast({ title: "Sign Up Failed", description: message, variant: "destructive" });
     } else {
-      toast({ title: "Account Created!", description: "Welcome to CandleWay. Start analyzing charts now!" });
+      toast({ title: "Account Created!", description: "Welcome to Apexium. Start analyzing charts now!" });
     }
   };
 
@@ -110,7 +110,7 @@ export default function Auth() {
             <TrendingUp className="h-8 w-8 text-primary" />
           </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-            CandleWay
+            Apexium
           </span>
         </div>
 

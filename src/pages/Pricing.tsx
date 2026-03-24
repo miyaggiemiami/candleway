@@ -38,7 +38,7 @@ const faqs = [
   { question: "Can I cancel my subscription anytime?", answer: "Yes, you can cancel your Premium subscription at any time. Your premium features will remain active until the end of your current billing period." },
   { question: "What payment methods do you accept?", answer: "We accept all major credit cards, debit cards, Google Pay, and Apple Pay through our secure payment processor Stripe." },
   { question: "Is my data secure?", answer: "Absolutely. We use enterprise-grade encryption and never share your trading data or uploaded charts with third parties." },
-  { question: "Do I need trading experience to use CandleWay?", answer: "CandleWay is designed for traders of all levels. Our AI provides clear buy/sell signals with explanations that both beginners and experienced traders can understand." },
+  { question: "Do I need trading experience to use Apexium?", answer: "Apexium is designed for traders of all levels. Our AI provides clear buy/sell signals with explanations that both beginners and experienced traders can understand." },
 ];
 
 export default function Pricing() {
@@ -50,7 +50,7 @@ export default function Pricing() {
 
   useEffect(() => {
     if (searchParams.get('success') === 'true') {
-      toast({ title: "Payment Successful!", description: "Welcome to CandleWay Premium. Enjoy unlimited analyses!" });
+      toast({ title: "Payment Successful!", description: "Welcome to Apexium Premium. Enjoy unlimited analyses!" });
       checkSubscription();
     } else if (searchParams.get('canceled') === 'true') {
       toast({ title: "Payment Canceled", description: "Your payment was canceled. No charges were made.", variant: "destructive" });

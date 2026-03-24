@@ -42,7 +42,7 @@ export function Header({ isPremium: propIsPremium, dailyUsed: propDailyUsed, dai
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold tracking-tight">
-              <span className="gradient-text">CandleWay</span>
+              <span className="gradient-text">Apexium</span>
             </span>
             <span className="text-[10px] text-muted-foreground -mt-1">AI Chart Analyzer</span>
           </div>

@@ -188,7 +188,7 @@ export function AIChatWidget() {
             <Bot className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-semibold">CandleWay AI</p>
+            <p className="text-sm font-semibold">Apexium AI</p>
             <p className="text-xs text-muted-foreground">Trading Assistant</p>
           </div>
         </div>
@@ -205,7 +205,7 @@ export function AIChatWidget() {
               <Bot className="h-6 w-6 text-primary" />
             </div>
             <p className="text-sm text-muted-foreground">
-              Hi! I'm CandleWay AI, built by Apexium. Ask me anything about trading, chart analysis, or how to use the app.
+              Hi! I'm Apexium AI. Ask me anything about trading, chart analysis, or how to use the app.
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {["How do I analyze a chart?", "Explain risk settings", "What is Auto Trade?"].map((q) => (

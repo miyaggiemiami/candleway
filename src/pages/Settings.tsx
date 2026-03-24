@@ -319,8 +319,8 @@ export default function Settings() {
             </Button>
             <Separator />
             <div className="text-center text-sm text-muted-foreground">
-              <p>CandleWay v1.0.0</p>
-              <p className="mt-1">© 2025 CandleWay. All rights reserved.</p>
+              <p>Apexium v1.0.0</p>
+              <p className="mt-1">© 2025 Apexium. All rights reserved.</p>
             </div>
           </CardContent>
         </Card>

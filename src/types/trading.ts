@@ -64,7 +64,7 @@ export interface DashboardMetrics {
 }
 
 export const RISK_CONSENT_TEXT = 
-  "I understand that trading involves significant risk of loss. AI-generated signals are probability-based analysis tools and do not guarantee profits. I accept full responsibility for my trading decisions and understand that CandleWay is not liable for any financial losses incurred. Past performance does not indicate future results.";
+  "I understand that trading involves significant risk of loss. AI-generated signals are probability-based analysis tools and do not guarantee profits. I accept full responsibility for my trading decisions and understand that Apexium is not liable for any financial losses incurred. Past performance does not indicate future results.";
 
 export const TIER_FEATURES: Record<SubscriptionTier, {
   name: string;
