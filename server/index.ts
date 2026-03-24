@@ -17,8 +17,8 @@ function getGemini() {
 }
 
 // Models tried in order when rate-limited (each has its own quota)
-const ANALYSIS_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
-const CHAT_MODELS    = ["gemini-1.5-flash",  "gemini-2.0-flash", "gemini-1.5-flash-8b"];
+const ANALYSIS_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash-exp"];
+const CHAT_MODELS    = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.0-flash-exp"];
 
 function parseRetryAfter(err: any): number {
   try {
