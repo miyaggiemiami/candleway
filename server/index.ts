@@ -9,7 +9,8 @@ app.use(express.json({ limit: "20mb" }));
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || "";
+// Accept either secret name in case user saved it under a different name
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLEAPI || process.env.GOOGLE_APIKEY || "";
 
 function getGemini() {
   if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured. Add it in the Secrets tab.");
@@ -317,6 +318,9 @@ const PORT = parseInt(process.env.PORT || "5000", 10);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`CandleWay server running on port ${PORT}`);
   if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
+  console.log(`Supabase URL: ${SUPABASE_URL ? "✓ configured" : "✗ MISSING"}`);
+  console.log(`Supabase Key: ${SUPABASE_ANON_KEY ? "✓ configured" : "✗ MISSING"}`);
+  console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
 });
 
 export default app;
