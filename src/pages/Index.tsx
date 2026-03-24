@@ -120,6 +120,17 @@ export default function Index() {
       });
       const data = await response.json();
 
+      if (response.status === 429 || data?.error === "rate_limit") {
+        const secs = data?.retryAfter || 60;
+        toast({
+          title: "AI Quota Reached",
+          description: `All AI models are temporarily rate-limited. Please wait ${secs} seconds and try again.`,
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
       if (!response.ok) {
         toast({ title: "Analysis Failed", description: data.error || "Failed to analyze chart.", variant: "destructive" });
         setIsAnalyzing(false);

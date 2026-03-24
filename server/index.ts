@@ -16,6 +16,25 @@ function getGemini() {
   return new GoogleGenerativeAI(GOOGLE_API_KEY);
 }
 
+// Models tried in order when rate-limited (each has its own quota)
+const ANALYSIS_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+const CHAT_MODELS    = ["gemini-1.5-flash",  "gemini-2.0-flash", "gemini-1.5-flash-8b"];
+
+function parseRetryAfter(err: any): number {
+  try {
+    const msg: string = err?.message || "";
+    const m = msg.match(/retry in ([\d.]+)/i);
+    if (m) return Math.ceil(parseFloat(m[1]));
+    const jm = msg.match(/"retryDelay"\s*:\s*"(\d+)s"/);
+    if (jm) return parseInt(jm[1], 10);
+  } catch {}
+  return 60;
+}
+
+function isRateLimit(err: any): boolean {
+  return (err?.message || "").includes("429");
+}
+
 function supabaseFunctionHeaders(authHeader?: string) {
   return {
     Authorization: authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
@@ -31,7 +50,6 @@ app.post("/api/analyze-chart", async (req, res) => {
     if (!imageBase64) return res.json({ error: "No image provided" });
 
     const genAI = getGemini();
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const systemPrompt = `You are an institutional trading analyst with deep expertise in technical analysis, price action, and market microstructure.
 
@@ -87,60 +105,87 @@ Return ONLY valid JSON (no markdown, no extra text):
       imagePart = { inlineData: { data: imageBase64, mimeType: "image/jpeg" } };
     }
 
-    const result = await model.generateContent([
-      systemPrompt,
-      `Analyze this ${pair} chart on ${timeframe} for ${style} trading. Return JSON only.`,
-      imagePart,
-    ]);
+    let lastErr: any = null;
+    for (const modelName of ANALYSIS_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent([
+          systemPrompt,
+          `Analyze this ${pair} chart on ${timeframe} for ${style} trading. Return JSON only.`,
+          imagePart,
+        ]);
 
-    const content = result.response.text();
-    if (!content) return res.json({ error: "No analysis generated" });
+        const content = result.response.text();
+        if (!content) return res.json({ error: "No analysis generated" });
 
-    let jsonStr = content.trim();
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1].trim();
-    const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (objectMatch) jsonStr = objectMatch[0];
+        let jsonStr = content.trim();
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) jsonStr = jsonMatch[1].trim();
+        const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (objectMatch) jsonStr = objectMatch[0];
 
-    let analysis: any;
-    try {
-      analysis = JSON.parse(jsonStr);
-    } catch {
-      console.error("Failed to parse AI response:", content);
-      return res.json({ error: "Failed to parse analysis results" });
+        let analysis: any;
+        try {
+          analysis = JSON.parse(jsonStr);
+        } catch {
+          console.error("Failed to parse AI response:", content);
+          return res.json({ error: "Failed to parse analysis results" });
+        }
+
+        let possibleOutcomes = analysis.possibleOutcomes || [];
+        if (possibleOutcomes.length > 0 && typeof possibleOutcomes[0] === "object") {
+          possibleOutcomes = possibleOutcomes.map((o: any) => `${o.scenario} (${o.probability}%): ${o.description}`);
+        }
+
+        return res.json({
+          ...analysis,
+          possibleOutcomes,
+          pair,
+          timeframe,
+          style,
+          stopLoss: analysis.stop_loss || analysis.stopLoss || "-",
+          takeProfit: analysis.take_profit || analysis.takeProfit || "-",
+          probability: analysis.confidence || analysis.probability || 50,
+          riskScore: analysis.riskScore || (analysis.risk_level === "Low" ? 3 : analysis.risk_level === "Medium" ? 5 : 8),
+          disclaimer: "Not financial advice. Probability-based analysis only. AI is not guaranteed. Always manage your risk.",
+        });
+      } catch (err: any) {
+        lastErr = err;
+        if (isRateLimit(err)) {
+          console.warn(`Model ${modelName} rate-limited, trying next...`);
+          continue;
+        }
+        throw err;
+      }
     }
 
-    let possibleOutcomes = analysis.possibleOutcomes || [];
-    if (possibleOutcomes.length > 0 && typeof possibleOutcomes[0] === "object") {
-      possibleOutcomes = possibleOutcomes.map((o: any) => `${o.scenario} (${o.probability}%): ${o.description}`);
-    }
-
-    return res.json({
-      ...analysis,
-      possibleOutcomes,
-      pair,
-      timeframe,
-      style,
-      stopLoss: analysis.stop_loss || analysis.stopLoss || "-",
-      takeProfit: analysis.take_profit || analysis.takeProfit || "-",
-      probability: analysis.confidence || analysis.probability || 50,
-      riskScore: analysis.riskScore || (analysis.risk_level === "Low" ? 3 : analysis.risk_level === "Medium" ? 5 : 8),
-      disclaimer: "Not financial advice. Probability-based analysis only. AI is not guaranteed. Always manage your risk.",
+    // All models exhausted
+    const retryAfter = parseRetryAfter(lastErr);
+    return res.status(429).json({
+      error: "rate_limit",
+      retryAfter,
+      message: `AI quota reached. Please wait ${retryAfter} seconds and try again.`,
     });
   } catch (error: any) {
     console.error("Error in analyze-chart:", error);
+    if (isRateLimit(error)) {
+      const retryAfter = parseRetryAfter(error);
+      return res.status(429).json({
+        error: "rate_limit",
+        retryAfter,
+        message: `AI quota reached. Please wait ${retryAfter} seconds and try again.`,
+      });
+    }
     return res.json({ error: error.message || "An unexpected error occurred" });
   }
 });
 
 // ── AI: Chat ──────────────────────────────────────────────────────────────────
 app.post("/api/ai-chat", async (req, res) => {
-  try {
-    const { messages } = req.body;
-    const genAI = getGemini();
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      systemInstruction: `You are CandleWay AI, a friendly trading assistant. You help users with:
+  const { messages } = req.body;
+  const genAI = getGemini();
+
+  const systemInstruction = `You are CandleWay AI, a friendly trading assistant. You help users with:
 - Understanding chart analysis results (trend, bias, support/resistance, patterns)
 - Explaining trading concepts (lot sizing, risk-reward, stop loss, take profit)
 - Guiding them through app features (chart upload, analysis, Manual/Assisted/Auto Trade modes)
@@ -150,36 +195,60 @@ app.post("/api/ai-chat", async (req, res) => {
 
 Keep answers concise, practical, and beginner-friendly.
 Never give specific financial advice or guarantee profits. Always remind users trading involves risk.
-Format responses with markdown when helpful.`,
-    });
+Format responses with markdown when helpful.`;
 
-    const history = (messages || []).slice(0, -1).map((m: any) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-    const lastMessage = messages?.[messages.length - 1];
+  const history = (messages || []).slice(0, -1).map((m: any) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const lastMessage = messages?.[messages.length - 1];
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
+  let lastErr: any = null;
+  for (const modelName of CHAT_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName, systemInstruction });
 
-    const chat = model.startChat({ history });
-    const streamResult = await chat.sendMessageStream(lastMessage?.content || "");
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
 
-    for await (const chunk of streamResult.stream) {
-      const text = chunk.text();
-      if (text) {
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+      const chat = model.startChat({ history });
+      const streamResult = await chat.sendMessageStream(lastMessage?.content || "");
+
+      for await (const chunk of streamResult.stream) {
+        const text = chunk.text();
+        if (text) {
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+        }
       }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    } catch (err: any) {
+      lastErr = err;
+      if (isRateLimit(err) && !res.headersSent) {
+        console.warn(`Chat model ${modelName} rate-limited, trying next...`);
+        continue;
+      }
+      break;
     }
-    res.write("data: [DONE]\n\n");
-    res.end();
-  } catch (e: any) {
-    console.error("ai-chat error:", e);
-    if (!res.headersSent) return res.status(500).json({ error: e.message || "Unknown error" });
-    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
-    res.end();
   }
+
+  // All models exhausted or non-rate-limit error
+  console.error("ai-chat error:", lastErr);
+  const retryAfter = parseRetryAfter(lastErr);
+  if (!res.headersSent) {
+    if (isRateLimit(lastErr)) {
+      return res.status(429).json({
+        error: "rate_limit",
+        retryAfter,
+        message: `AI quota reached. Please wait ${retryAfter} seconds and try again.`,
+      });
+    }
+    return res.status(500).json({ error: lastErr?.message || "Unknown error" });
+  }
+  res.write(`data: ${JSON.stringify({ error: lastErr?.message })}\n\n`);
+  res.end();
 });
 
 // ── Supabase Function Proxies ─────────────────────────────────────────────────

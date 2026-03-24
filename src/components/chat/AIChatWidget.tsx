@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageCircle, X, Send, Loader2, Bot, User } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Bot, User, Clock } from "lucide-react";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; isError?: boolean; retryAfter?: number };
 
 const CHAT_URL = `/api/ai-chat`;
 
@@ -18,11 +18,17 @@ async function streamChat({
 }) {
   const resp = await fetch(CHAT_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ messages }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: messages.filter((m) => !m.isError) }),
   });
+
+  if (resp.status === 429) {
+    const data = await resp.json().catch(() => ({}));
+    const err: any = new Error(data.message || "Rate limit reached");
+    err.retryAfter = data.retryAfter || 60;
+    err.isRateLimit = true;
+    throw err;
+  }
 
   if (!resp.ok || !resp.body) {
     const err = await resp.json().catch(() => ({}));
@@ -50,6 +56,7 @@ async function streamChat({
       if (json === "[DONE]") { done = true; break; }
       try {
         const parsed = JSON.parse(json);
+        if (parsed.error) throw new Error(parsed.error);
         const c = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (c) onDelta(c);
       } catch {
@@ -61,31 +68,68 @@ async function streamChat({
   onDone();
 }
 
+function RateLimitMessage({ retryAfter, onRetry }: { retryAfter: number; onRetry: () => void }) {
+  const [seconds, setSeconds] = useState(retryAfter);
+
+  useEffect(() => {
+    if (seconds <= 0) return;
+    const t = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [seconds]);
+
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <Clock className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+      <div>
+        <p className="text-yellow-500 font-medium">AI quota reached</p>
+        {seconds > 0 ? (
+          <p className="text-muted-foreground text-xs mt-0.5">
+            Retry available in <span className="font-semibold text-foreground">{seconds}s</span>
+          </p>
+        ) : (
+          <button
+            onClick={onRetry}
+            className="text-xs text-primary hover:underline mt-0.5 font-medium"
+          >
+            Click to retry
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AIChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lastUserMsg, setLastUserMsg] = useState<Msg | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = useCallback(async (overrideMessages?: Msg[], overrideUserMsg?: Msg) => {
+    const text = overrideUserMsg?.content || input.trim();
     if (!text || loading) return;
     setInput("");
-    const userMsg: Msg = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
+
+    const userMsg: Msg = overrideUserMsg || { role: "user", content: text };
+    if (!overrideMessages) {
+      setMessages((prev) => [...prev, userMsg]);
+    }
+    setLastUserMsg(userMsg);
     setLoading(true);
 
+    const convo = overrideMessages || [...messages, userMsg];
     let assistantSoFar = "";
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
-        if (last?.role === "assistant") {
+        if (last?.role === "assistant" && !last.isError) {
           return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
         }
         return [...prev, { role: "assistant", content: assistantSoFar }];
@@ -94,22 +138,38 @@ export function AIChatWidget() {
 
     try {
       await streamChat({
-        messages: [...messages, userMsg],
+        messages: convo,
         onDelta: upsert,
         onDone: () => setLoading(false),
       });
     } catch (e: any) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `Sorry, I couldn't respond: ${e.message}` },
-      ]);
+      if (e.isRateLimit) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "", isError: true, retryAfter: e.retryAfter },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `Sorry, something went wrong: ${e.message}`, isError: true },
+        ]);
+      }
       setLoading(false);
     }
-  };
+  }, [input, loading, messages]);
+
+  const handleRetry = useCallback(() => {
+    if (!lastUserMsg) return;
+    // Remove the error message and re-send
+    setMessages((prev) => prev.filter((m) => !m.isError));
+    const convo = messages.filter((m) => !m.isError);
+    send(convo, lastUserMsg);
+  }, [lastUserMsg, messages, send]);
 
   if (!open) {
     return (
       <button
+        data-testid="button-open-chat"
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center"
         aria-label="Open AI Chat"
@@ -151,7 +211,7 @@ export function AIChatWidget() {
               {["How do I analyze a chart?", "Explain risk settings", "What is Auto Trade?"].map((q) => (
                 <button
                   key={q}
-                  onClick={() => { setInput(q); }}
+                  onClick={() => setInput(q)}
                   className="text-xs px-3 py-1.5 rounded-full border border-border/50 bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
                 >
                   {q}
@@ -172,10 +232,16 @@ export function AIChatWidget() {
               className={`max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
                 m.role === "user"
                   ? "bg-primary text-primary-foreground"
+                  : m.isError
+                  ? "bg-yellow-500/10 border border-yellow-500/30 text-foreground"
                   : "bg-secondary/70 text-foreground"
               }`}
             >
-              {m.content}
+              {m.isError && m.retryAfter != null ? (
+                <RateLimitMessage retryAfter={m.retryAfter} onRetry={handleRetry} />
+              ) : (
+                m.content
+              )}
             </div>
             {m.role === "user" && (
               <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center shrink-0 mt-1">
@@ -204,13 +270,20 @@ export function AIChatWidget() {
           className="flex gap-2"
         >
           <Input
+            data-testid="input-chat-message"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about trading..."
             className="flex-1 text-sm bg-background"
             disabled={loading}
           />
-          <Button type="submit" size="icon" disabled={!input.trim() || loading} className="shrink-0">
+          <Button
+            data-testid="button-send-chat"
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || loading}
+            className="shrink-0"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>
