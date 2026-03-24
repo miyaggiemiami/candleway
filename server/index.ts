@@ -2,14 +2,19 @@ import express from "express";
 import cors from "cors";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import authRouter from "./routes/auth";
+import profilesRouter from "./routes/profiles";
+import analysesRouter from "./routes/analyses";
+import tradesRouter from "./routes/trades";
+import riskSettingsRouter from "./routes/riskSettings";
+import riskConsentRouter from "./routes/riskConsent";
+import metatraderRouter from "./routes/metatrader";
+import stripeRouter from "./routes/stripe";
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-// Accept either secret name in case user saved it under a different name
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLEAPI || process.env.GOOGLE_APIKEY || "";
 
 function getGemini() {
@@ -17,7 +22,6 @@ function getGemini() {
   return new GoogleGenerativeAI(GOOGLE_API_KEY);
 }
 
-// Models tried in order when rate-limited (each has its own quota)
 const ANALYSIS_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
 const CHAT_MODELS    = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
 
@@ -36,13 +40,27 @@ function isRateLimit(err: any): boolean {
   return (err?.message || "").includes("429");
 }
 
-function supabaseFunctionHeaders(authHeader?: string) {
-  return {
-    Authorization: authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
-    "Content-Type": "application/json",
-    apikey: SUPABASE_ANON_KEY,
-  };
-}
+// ── Auth routes ───────────────────────────────────────────────────────────────
+app.use("/api/auth", authRouter);
+
+// ── Data routes ───────────────────────────────────────────────────────────────
+app.use("/api/profiles", profilesRouter);
+app.use("/api/analyses", analysesRouter);
+app.use("/api/trades", tradesRouter);
+app.use("/api/risk-settings", riskSettingsRouter);
+app.use("/api/risk-consent", riskConsentRouter);
+app.use("/api/metatrader", metatraderRouter);
+
+// ── Stripe routes (mounted at /api for backward compat) ───────────────────────
+app.use("/api", stripeRouter);
+
+// ── Backward-compatible MetaTrader endpoint ───────────────────────────────────
+app.post("/api/execute-metatrader-trade", (req, res) => {
+  req.url = "/trade";
+  (metatraderRouter as any).handle(req, res, () => {
+    res.status(404).json({ error: "Not found" });
+  });
+});
 
 // ── AI: Chart Analysis ────────────────────────────────────────────────────────
 app.post("/api/analyze-chart", async (req, res) => {
@@ -160,7 +178,6 @@ Return ONLY valid JSON (no markdown, no extra text):
       }
     }
 
-    // All models exhausted
     const retryAfter = parseRetryAfter(lastErr);
     return res.status(429).json({
       error: "rate_limit",
@@ -171,11 +188,7 @@ Return ONLY valid JSON (no markdown, no extra text):
     console.error("Error in analyze-chart:", error);
     if (isRateLimit(error)) {
       const retryAfter = parseRetryAfter(error);
-      return res.status(429).json({
-        error: "rate_limit",
-        retryAfter,
-        message: `AI quota reached. Please wait ${retryAfter} seconds and try again.`,
-      });
+      return res.status(429).json({ error: "rate_limit", retryAfter, message: `AI quota reached. Please wait ${retryAfter} seconds and try again.` });
     }
     return res.json({ error: error.message || "An unexpected error occurred" });
   }
@@ -235,68 +248,16 @@ Format responses with markdown when helpful.`;
     }
   }
 
-  // All models exhausted or non-rate-limit error
   console.error("ai-chat error:", lastErr);
   const retryAfter = parseRetryAfter(lastErr);
   if (!res.headersSent) {
     if (isRateLimit(lastErr)) {
-      return res.status(429).json({
-        error: "rate_limit",
-        retryAfter,
-        message: `AI quota reached. Please wait ${retryAfter} seconds and try again.`,
-      });
+      return res.status(429).json({ error: "rate_limit", retryAfter, message: `AI quota reached. Please wait ${retryAfter} seconds and try again.` });
     }
     return res.status(500).json({ error: lastErr?.message || "Unknown error" });
   }
   res.write(`data: ${JSON.stringify({ error: lastErr?.message })}\n\n`);
   res.end();
-});
-
-// ── Supabase Function Proxies ─────────────────────────────────────────────────
-app.post("/api/check-subscription", async (req, res) => {
-  const authHeader = req.headers.authorization as string;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/check-subscription`, {
-      method: "POST", headers: supabaseFunctionHeaders(authHeader),
-    });
-    return res.status(r.status).json(await r.json());
-  } catch (e: any) { return res.status(500).json({ error: e.message }); }
-});
-
-app.post("/api/create-checkout", async (req, res) => {
-  const authHeader = req.headers.authorization as string;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
-      method: "POST", headers: supabaseFunctionHeaders(authHeader),
-    });
-    return res.status(r.status).json(await r.json());
-  } catch (e: any) { return res.status(500).json({ error: e.message }); }
-});
-
-app.post("/api/customer-portal", async (req, res) => {
-  const authHeader = req.headers.authorization as string;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/customer-portal`, {
-      method: "POST", headers: supabaseFunctionHeaders(authHeader),
-    });
-    return res.status(r.status).json(await r.json());
-  } catch (e: any) { return res.status(500).json({ error: e.message }); }
-});
-
-app.post("/api/execute-metatrader-trade", async (req, res) => {
-  const authHeader = req.headers.authorization as string;
-  if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/execute-metatrader-trade`, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(authHeader),
-      body: JSON.stringify(req.body),
-    });
-    return res.status(r.status).json(await r.json());
-  } catch (e: any) { return res.status(500).json({ error: e.message }); }
 });
 
 // ── Dev: proxy everything else to Vite ───────────────────────────────────────
@@ -318,9 +279,8 @@ const PORT = parseInt(process.env.PORT || "5000", 10);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`CandleWay server running on port ${PORT}`);
   if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
-  console.log(`Supabase URL: ${SUPABASE_URL ? "✓ configured" : "✗ MISSING"}`);
-  console.log(`Supabase Key: ${SUPABASE_ANON_KEY ? "✓ configured" : "✗ MISSING"}`);
   console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
+  console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
 });
 
 export default app;

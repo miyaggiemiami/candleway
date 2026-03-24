@@ -1,19 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from './useAuth';
-import { RiskSettings, AutomationMode } from '@/types/trading';
-
-const DEFAULT_SETTINGS: Omit<RiskSettings, 'id' | 'user_id'> = {
-  risk_per_trade: 1.0,
-  max_trades_per_day: 5,
-  max_daily_loss: 5.0,
-  daily_profit_lock: 0,
-  confidence_threshold: 70,
-  automation_mode: 'manual',
-  circuit_breaker_enabled: true,
-  news_filter_enabled: false,
-  kill_switch_active: false,
-};
+import { RiskSettings } from '@/types/trading';
 
 export function useRiskSettings() {
   const { user } = useAuth();
@@ -22,32 +10,11 @@ export function useRiskSettings() {
 
   const fetchSettings = useCallback(async () => {
     if (!user) return;
-    
-    const { data, error } = await supabase
-      .from('risk_settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching risk settings:', error);
-      setLoading(false);
-      return;
-    }
-
-    if (!data) {
-      // Create default settings
-      const { data: newData, error: insertError } = await supabase
-        .from('risk_settings')
-        .insert({ user_id: user.id, ...DEFAULT_SETTINGS })
-        .select()
-        .single();
-
-      if (!insertError && newData) {
-        setSettings(newData as unknown as RiskSettings);
-      }
-    } else {
+    try {
+      const data = await api.riskSettings.get();
       setSettings(data as unknown as RiskSettings);
+    } catch (err) {
+      console.error('Error fetching risk settings:', err);
     }
     setLoading(false);
   }, [user]);
@@ -58,16 +25,13 @@ export function useRiskSettings() {
 
   const updateSettings = async (updates: Partial<RiskSettings>) => {
     if (!user || !settings) return;
-    
-    const { error } = await supabase
-      .from('risk_settings')
-      .update(updates as any)
-      .eq('user_id', user.id);
-
-    if (!error) {
-      setSettings({ ...settings, ...updates });
+    try {
+      const data = await api.riskSettings.update(updates as any);
+      setSettings(data as unknown as RiskSettings);
+      return { error: null };
+    } catch (err: any) {
+      return { error: new Error(err.message) };
     }
-    return { error };
   };
 
   return { settings, loading, updateSettings, refetch: fetchSettings };

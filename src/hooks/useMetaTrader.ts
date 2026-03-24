@@ -1,11 +1,10 @@
 import { useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { getToken } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 async function callMetaTraderAPI(body: object) {
-  const session = await supabase.auth.getSession();
-  const token = session.data.session?.access_token;
-  const response = await fetch('/api/execute-metatrader-trade', {
+  const token = getToken();
+  const response = await fetch('/api/metatrader/trade', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -40,7 +39,6 @@ export function useMetaTrader() {
     try {
       const data = await callMetaTraderAPI({ action: 'get-account-info' });
       if (data.error) throw new Error(data.error);
-      
       setAccountInfo(data.account);
       setConnected(true);
       return data.account;
@@ -48,11 +46,7 @@ export function useMetaTrader() {
       setConnected(false);
       const msg = err.message || '';
       if (!msg.includes('not configured') && !msg.includes('Not configured')) {
-        toast({
-          title: 'MT Connection Failed',
-          description: msg || 'Could not connect to MetaTrader account.',
-          variant: 'destructive',
-        });
+        toast({ title: 'MT Connection Failed', description: msg || 'Could not connect to MetaTrader account.', variant: 'destructive' });
       }
       return null;
     } finally {
@@ -71,18 +65,10 @@ export function useMetaTrader() {
     try {
       const data = await callMetaTraderAPI({ action: 'execute-trade', ...params });
       if (data.error) throw new Error(data.error);
-
-      toast({
-        title: 'Live Trade Executed',
-        description: `${params.direction} ${params.symbol} @ ${params.volume} lots — Order: ${data.orderId}`,
-      });
+      toast({ title: 'Live Trade Executed', description: `${params.direction} ${params.symbol} @ ${params.volume} lots — Order: ${data.orderId}` });
       return { success: true, data };
     } catch (err: any) {
-      toast({
-        title: 'Trade Execution Failed',
-        description: err.message || 'Failed to execute on MetaTrader.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Trade Execution Failed', description: err.message || 'Failed to execute on MetaTrader.', variant: 'destructive' });
       return { success: false, error: err.message };
     } finally {
       setLoading(false);
@@ -98,12 +84,5 @@ export function useMetaTrader() {
     }
   }, []);
 
-  return {
-    accountInfo,
-    connected,
-    loading,
-    getAccountInfo,
-    executeLiveTrade,
-    getPositions,
-  };
+  return { accountInfo, connected, loading, getAccountInfo, executeLiveTrade, getPositions };
 }

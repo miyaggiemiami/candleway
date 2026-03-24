@@ -13,7 +13,7 @@ import { OpenTradesPanel } from "@/components/trading/OpenTradesPanel";
 import { RiskSettingsPanel } from "@/components/trading/RiskSettingsPanel";
 import { RiskConsentDialog } from "@/components/trading/RiskConsentDialog";
 import { MetaTraderWidget } from "@/components/dashboard/MetaTraderWidget";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
 import { useTrades } from "@/hooks/useTrades";
@@ -74,10 +74,8 @@ export default function Index() {
 
   const saveAnalysisToDb = async (result: AnalysisResult) => {
     if (!user) return;
-    const { error } = await supabase
-      .from('analyses')
-      .insert({
-        user_id: user.id,
+    try {
+      await api.analyses.create({
         pair: result.pair,
         timeframe: result.timeframe,
         style: result.style,
@@ -97,7 +95,9 @@ export default function Index() {
         reasoning: result.reasoning,
         disclaimer: result.disclaimer,
       });
-    if (error) console.error('Error saving analysis:', error);
+    } catch (err) {
+      console.error('Error saving analysis:', err);
+    }
   };
 
   const handleAnalyze = async () => {

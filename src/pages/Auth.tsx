@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { TrendingUp, Mail, Lock, Loader2, User } from "lucide-react";
 import { z } from "zod";
 
@@ -21,7 +21,7 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
-  
+
   const { toast } = useToast();
   const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
@@ -38,123 +38,73 @@ export default function Auth() {
       return;
     }
     setIsLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setIsLoading(false);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.auth.forgotPassword(email);
       toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user) {
-      navigate("/");
-    }
+    if (user) navigate("/");
   }, [user, navigate]);
 
   const validateInputs = (isSignUp: boolean) => {
-    try {
-      emailSchema.parse(email);
-    } catch {
-      toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      });
+    try { emailSchema.parse(email); } catch {
+      toast({ title: "Invalid Email", description: "Please enter a valid email address", variant: "destructive" });
       return false;
     }
-
-    try {
-      passwordSchema.parse(password);
-    } catch {
-      toast({
-        title: "Invalid Password",
-        description: "Password must be at least 6 characters",
-        variant: "destructive",
-      });
+    try { passwordSchema.parse(password); } catch {
+      toast({ title: "Invalid Password", description: "Password must be at least 6 characters", variant: "destructive" });
       return false;
     }
-
     if (isSignUp && password !== confirmPassword) {
-      toast({
-        title: "Passwords Don't Match",
-        description: "Please make sure your passwords match",
-        variant: "destructive",
-      });
+      toast({ title: "Passwords Don't Match", description: "Please make sure your passwords match", variant: "destructive" });
       return false;
     }
-
     if (isSignUp && displayName.trim().length < 2) {
-      toast({
-        title: "Name Required",
-        description: "Please enter your name (at least 2 characters)",
-        variant: "destructive",
-      });
+      toast({ title: "Name Required", description: "Please enter your name (at least 2 characters)", variant: "destructive" });
       return false;
     }
-
     return true;
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateInputs(false)) return;
-
     setIsLoading(true);
     const { error } = await signIn(email, password);
     setIsLoading(false);
-
     if (error) {
       let message = error.message;
-      if (error.message.includes("Invalid login credentials")) {
-        message = "Invalid email or password. Please try again.";
-      }
-      toast({
-        title: "Login Failed",
-        description: message,
-        variant: "destructive",
-      });
+      if (error.message.includes("Invalid login credentials")) message = "Invalid email or password. Please try again.";
+      toast({ title: "Login Failed", description: message, variant: "destructive" });
     } else {
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully logged in.",
-      });
+      toast({ title: "Welcome back!", description: "You have successfully logged in." });
     }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateInputs(true)) return;
-
     setIsLoading(true);
     const { error } = await signUp(email, password, displayName.trim());
     setIsLoading(false);
-
     if (error) {
       let message = error.message;
-      if (error.message.includes("User already registered")) {
-        message = "An account with this email already exists. Please log in instead.";
-      }
-      toast({
-        title: "Sign Up Failed",
-        description: message,
-        variant: "destructive",
-      });
+      if (error.message.includes("already exists")) message = "An account with this email already exists. Please log in instead.";
+      toast({ title: "Sign Up Failed", description: message, variant: "destructive" });
     } else {
-      toast({
-        title: "Account Created!",
-        description: "Welcome to CandleWay. Start analyzing charts now!",
-      });
+      toast({ title: "Account Created!", description: "Welcome to CandleWay. Start analyzing charts now!" });
     }
   };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="p-2 bg-primary/10 rounded-xl">
             <TrendingUp className="h-8 w-8 text-primary" />
@@ -167,9 +117,7 @@ export default function Auth() {
         <Card className="border-border/50 shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Welcome</CardTitle>
-            <CardDescription>
-              Sign in to your account or create a new one
-            </CardDescription>
+            <CardDescription>Sign in to your account or create a new one</CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -184,48 +132,21 @@ export default function Auth() {
                     <Label htmlFor="login-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="trader@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="login-email" type="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="login-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="login-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      "Sign In"
-                    )}
+                    {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : "Sign In"}
                   </Button>
                   <div className="text-center">
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      className="text-sm text-primary hover:underline"
-                    >
+                    <button type="button" onClick={handleForgotPassword} className="text-sm text-primary hover:underline">
                       Forgot your password?
                     </button>
                   </div>
@@ -238,71 +159,32 @@ export default function Auth() {
                     <Label htmlFor="display-name">Name</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="display-name"
-                        type="text"
-                        placeholder="Your name"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="display-name" type="text" placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="signup-email"
-                        type="email"
-                        placeholder="trader@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="signup-email" type="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="signup-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="signup-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">Confirm Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="confirm-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
+                      <Input id="confirm-password" type="password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
-                      </>
-                    ) : (
-                      "Create Account"
-                    )}
+                    {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating account...</> : "Create Account"}
                   </Button>
                 </form>
               </TabsContent>

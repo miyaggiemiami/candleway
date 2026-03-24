@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api, getToken } from '@/lib/api';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 
 async function callMetaTraderAPI(body: object) {
-  const session = await supabase.auth.getSession();
-  const token = session.data.session?.access_token;
-  const response = await fetch('/api/execute-metatrader-trade', {
+  const token = getToken();
+  const response = await fetch('/api/metatrader/trade', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -38,14 +37,11 @@ export function useMetaTraderSettings() {
 
   const fetchSettings = useCallback(async () => {
     if (!user) { setLoading(false); return; }
-    const { data, error } = await supabase
-      .from('metatrader_settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (!error && data) {
+    try {
+      const data = await api.metatrader.getSettings();
       setSettings(data as unknown as MetaTraderConfig);
+    } catch (err) {
+      console.error('Error fetching MT settings:', err);
     }
     setLoading(false);
   }, [user]);
@@ -56,18 +52,7 @@ export function useMetaTraderSettings() {
     if (!user) return;
     setSaving(true);
     try {
-      if (settings) {
-        const { error } = await supabase
-          .from('metatrader_settings')
-          .update({ ...config } as any)
-          .eq('user_id', user.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('metatrader_settings')
-          .insert({ user_id: user.id, ...config } as any);
-        if (error) throw error;
-      }
+      await api.metatrader.saveSettings(config);
       await fetchSettings();
       toast({ title: 'Settings Saved', description: 'MetaTrader configuration updated.' });
     } catch (err: any) {
@@ -83,21 +68,14 @@ export function useMetaTraderSettings() {
       const data = await callMetaTraderAPI({ action: 'get-account-info' });
       if (data?.error) throw new Error(data.error);
 
-      await supabase
-        .from('metatrader_settings')
-        .update({ is_connected: true } as any)
-        .eq('user_id', user.id);
+      await api.metatrader.saveSettings({ ...settings, is_connected: true } as any);
       await fetchSettings();
-      
+
       toast({ title: 'Connection Successful', description: `Connected to ${data.account?.platform || 'MetaTrader'} — Balance: $${data.account?.balance?.toFixed(2)}` });
       return true;
     } catch (err: any) {
-      await supabase
-        .from('metatrader_settings')
-        .update({ is_connected: false } as any)
-        .eq('user_id', user.id);
+      await api.metatrader.saveSettings({ ...settings, is_connected: false } as any).catch(() => {});
       await fetchSettings();
-      
       toast({ title: 'Connection Failed', description: err.message, variant: 'destructive' });
       return false;
     }
