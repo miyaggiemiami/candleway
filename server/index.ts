@@ -24,8 +24,8 @@ function getGemini() {
   return new GoogleGenerativeAI(GOOGLE_API_KEY);
 }
 
-const ANALYSIS_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
-const CHAT_MODELS    = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
+const ANALYSIS_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash-lite"];
+const CHAT_MODELS    = ["gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"];
 
 function parseRetryAfter(err: any): number {
   try {
@@ -36,6 +36,11 @@ function parseRetryAfter(err: any): number {
     if (jm) return parseInt(jm[1], 10);
   } catch {}
   return 60;
+}
+
+function isModelUnavailable(err: any): boolean {
+  const msg = (err?.message || "").toLowerCase();
+  return msg.includes("not found") || msg.includes("not supported") || msg.includes("404") || msg.includes("deprecated");
 }
 
 function isRateLimit(err: any): boolean {
@@ -169,8 +174,8 @@ Return ONLY valid JSON (no markdown, no extra text):
         });
       } catch (err: any) {
         lastErr = err;
-        if (isRateLimit(err)) {
-          console.warn(`Model ${modelName} rate-limited, trying next...`);
+        if (isRateLimit(err) || isModelUnavailable(err)) {
+          console.warn(`Model ${modelName} unavailable (${isRateLimit(err) ? "rate-limited" : "not found"}), trying next...`);
           continue;
         }
         throw err;
@@ -198,7 +203,7 @@ app.post("/api/ai-chat", async (req, res) => {
   const { messages } = req.body;
   const genAI = getGemini();
 
-  const systemInstruction = `You are CandleWay AI, a friendly trading assistant. You help users with:
+  const systemInstruction = `You are Apexium AI, a friendly trading assistant. You help users with:
 - Understanding chart analysis results (trend, bias, support/resistance, patterns)
 - Explaining trading concepts (lot sizing, risk-reward, stop loss, take profit)
 - Guiding them through app features (chart upload, analysis, Manual/Assisted/Auto Trade modes)
@@ -217,6 +222,7 @@ Format responses with markdown when helpful.`;
   const lastMessage = messages?.[messages.length - 1];
 
   let lastErr: any = null;
+  let hadRateLimit = false;
   for (const modelName of CHAT_MODELS) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName, systemInstruction });
@@ -239,8 +245,9 @@ Format responses with markdown when helpful.`;
       return;
     } catch (err: any) {
       lastErr = err;
-      if (isRateLimit(err) && !res.headersSent) {
-        console.warn(`Chat model ${modelName} rate-limited, trying next...`);
+      if (isRateLimit(err)) hadRateLimit = true;
+      if ((isRateLimit(err) || isModelUnavailable(err)) && !res.headersSent) {
+        console.warn(`Chat model ${modelName} unavailable (${isRateLimit(err) ? "rate-limited" : "not found"}), trying next...`);
         continue;
       }
       break;
@@ -248,9 +255,9 @@ Format responses with markdown when helpful.`;
   }
 
   console.error("ai-chat error:", lastErr);
-  const retryAfter = parseRetryAfter(lastErr);
   if (!res.headersSent) {
-    if (isRateLimit(lastErr)) {
+    if (isRateLimit(lastErr) || hadRateLimit) {
+      const retryAfter = parseRetryAfter(lastErr) || 30;
       return res.status(429).json({ error: "rate_limit", retryAfter, message: `AI quota reached. Please wait ${retryAfter} seconds and try again.` });
     }
     return res.status(500).json({ error: lastErr?.message || "Unknown error" });
