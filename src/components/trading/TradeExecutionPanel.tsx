@@ -61,13 +61,13 @@ export function TradeExecutionPanel({
     }
   }, [liveMode, connected, mtLoading, getAccountInfo]);
 
-  // Auto-execute for 'auto' mode when analysis arrives
+  // Auto-execute for 'auto' mode when analysis arrives or consent is just given
   useEffect(() => {
-    if (tradeMode === 'auto' && analysis && analysis.bias !== 'No Trade') {
+    if (tradeMode === 'auto' && analysis && analysis.bias !== 'No Trade' && hasConsented) {
       handleExecuteInternal();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysis, tradeMode]);
+  }, [analysis, tradeMode, hasConsented]);
 
   if (!analysis) return null;
 

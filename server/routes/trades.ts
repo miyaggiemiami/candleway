@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db/index";
-import { trades } from "../db/schema";
+import { trades, analyses } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
 import { eq, desc } from "drizzle-orm";
 
@@ -25,12 +25,23 @@ router.post("/", async (req: AuthenticatedRequest, res) => {
   try {
     const { pair, direction, entry_price, stop_loss, take_profit, lot_size, execution_mode, risk_reward, confidence, notes, analysis_id } = req.body;
 
+    // Validate analysis_id FK - if it doesn't exist in the analyses table, use null
+    let safeAnalysisId: string | null = analysis_id || null;
+    if (safeAnalysisId) {
+      try {
+        const [found] = await db.select({ id: analyses.id }).from(analyses).where(eq(analyses.id, safeAnalysisId)).limit(1);
+        if (!found) safeAnalysisId = null;
+      } catch {
+        safeAnalysisId = null;
+      }
+    }
+
     const [trade] = await db.insert(trades).values({
       user_id: req.userId!,
       pair, direction,
-      entry_price: String(entry_price),
-      stop_loss: String(stop_loss),
-      take_profit: String(take_profit),
+      entry_price: String(entry_price || 0),
+      stop_loss: String(stop_loss || 0),
+      take_profit: String(take_profit || 0),
       lot_size: String(lot_size || 0.01),
       status: "open",
       outcome: "pending",
@@ -39,7 +50,7 @@ router.post("/", async (req: AuthenticatedRequest, res) => {
       risk_reward: risk_reward ? String(risk_reward) : null,
       confidence: confidence ? Number(confidence) : null,
       notes,
-      analysis_id: analysis_id || null,
+      analysis_id: safeAnalysisId,
     }).returning();
 
     return res.json(trade);

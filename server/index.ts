@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import path from "path";
+import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import authRouter from "./routes/auth";
 import profilesRouter from "./routes/profiles";
@@ -260,9 +262,11 @@ Format responses with markdown when helpful.`;
 // ── Stripe routes (mounted last so they don't intercept open AI endpoints) ────
 app.use("/api", stripeRouter);
 
-// ── Dev: proxy everything else to Vite ───────────────────────────────────────
-const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
-const isDev = process.env.NODE_ENV !== "production";
+// ── Static files (production) / Dev proxy ────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+const VITE_PORT  = parseInt(process.env.VITE_PORT || "5173", 10);
+const isDev      = process.env.NODE_ENV !== "production";
 
 if (isDev) {
   app.use(
@@ -273,6 +277,13 @@ if (isDev) {
       ws: true,
     })
   );
+} else {
+  const distPath = path.join(__dirname, "..", "dist");
+  app.use(express.static(distPath));
+  app.get(/(.*)/, (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(distPath, "index.html"));
+  });
 }
 
 const PORT = parseInt(process.env.PORT || "5000", 10);
