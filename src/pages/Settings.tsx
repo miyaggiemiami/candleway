@@ -11,7 +11,8 @@ import {
   User, 
   Crown, 
   Bell, 
-  Moon, 
+  Moon,
+  Sun,
   Shield, 
   Trash2, 
   Mail, 
@@ -25,9 +26,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useMetaTraderSettings } from "@/hooks/useMetaTraderSettings";
+import { useTheme } from "@/hooks/useTheme";
 
 export default function Settings() {
-  const [darkMode, setDarkMode] = useState(true);
+  const { isDark, toggleTheme } = useTheme();
+  const darkMode = isDark;
   const [notifications, setNotifications] = useState(true);
   const [email, setEmail] = useState("trader@example.com");
   const [name, setName] = useState("Trader");
@@ -152,13 +155,13 @@ export default function Settings() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Moon className="h-5 w-5 text-muted-foreground" />
+                {isDark ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}
                 <div>
-                  <p className="font-medium">Dark Mode</p>
-                  <p className="text-sm text-muted-foreground">Use dark theme</p>
+                  <p className="font-medium">{isDark ? "Dark Mode" : "Light Mode"}</p>
+                  <p className="text-sm text-muted-foreground">{isDark ? "Switch to light theme" : "Switch to dark theme"}</p>
                 </div>
               </div>
-              <Switch checked={darkMode} onCheckedChange={setDarkMode} />
+              <Switch checked={darkMode} onCheckedChange={toggleTheme} />
             </div>
             <Separator />
             <div className="flex items-center justify-between">

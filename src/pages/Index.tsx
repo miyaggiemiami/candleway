@@ -13,6 +13,8 @@ import { OpenTradesPanel } from "@/components/trading/OpenTradesPanel";
 import { RiskSettingsPanel } from "@/components/trading/RiskSettingsPanel";
 import { RiskConsentDialog } from "@/components/trading/RiskConsentDialog";
 import { MetaTraderWidget } from "@/components/dashboard/MetaTraderWidget";
+import { SessionClock } from "@/components/dashboard/SessionClock";
+import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
@@ -308,6 +310,12 @@ export default function Index() {
                     </div>
                   </div>
                 </section>
+
+                {/* Session Clock + Position Calculator */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SessionClock />
+                  <PositionCalculator />
+                </div>
 
                 {/* MT Widget + Open Trades + Recent */}
                 {user && <MetaTraderWidget />}

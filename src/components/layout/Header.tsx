@@ -1,9 +1,10 @@
-import { TrendingUp, Crown, Menu, User, LogOut, LogIn } from "lucide-react";
+import { TrendingUp, Crown, Menu, User, LogOut, LogIn, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,7 @@ interface HeaderProps {
 export function Header({ isPremium: propIsPremium, dailyUsed: propDailyUsed, dailyLimit = 10 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, profile, signOut } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   
   // Use profile data if available, otherwise fall back to props
   const isPremium = profile?.is_premium ?? propIsPremium ?? false;
@@ -120,6 +122,15 @@ export function Header({ isPremium: propIsPremium, dailyUsed: propDailyUsed, dai
               Sign In
             </Button>
           )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
 
           <Button
             variant="ghost"
