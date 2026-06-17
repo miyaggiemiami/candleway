@@ -270,6 +270,20 @@ ${nameNote}`.trim();
   res.end();
 });
 
+// ── Fear & Greed proxy ────────────────────────────────────────────────────────
+app.get("/api/fear-greed", async (_req, res) => {
+  try {
+    const r = await fetch("https://api.alternative.me/fng/?limit=1&format=json");
+    if (!r.ok) throw new Error(`upstream ${r.status}`);
+    const data = await r.json();
+    const entry = data?.data?.[0];
+    if (!entry) throw new Error("no data");
+    res.json({ value: parseInt(entry.value, 10), classification: entry.value_classification, timestamp: entry.timestamp });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ── Stripe routes (mounted last so they don't intercept open AI endpoints) ────
 app.use("/api", stripeRouter);
 

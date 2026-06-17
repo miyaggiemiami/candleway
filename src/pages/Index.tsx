@@ -15,6 +15,8 @@ import { RiskConsentDialog } from "@/components/trading/RiskConsentDialog";
 import { MetaTraderWidget } from "@/components/dashboard/MetaTraderWidget";
 import { SessionClock } from "@/components/dashboard/SessionClock";
 import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
+import { FearGreedMeter } from "@/components/dashboard/FearGreedMeter";
+import { EconomicCalendar } from "@/components/dashboard/EconomicCalendar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
@@ -315,6 +317,12 @@ export default function Index() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <SessionClock />
                   <PositionCalculator />
+                </div>
+
+                {/* Fear & Greed + Economic Calendar */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <FearGreedMeter />
+                  <EconomicCalendar />
                 </div>
 
                 {/* MT Widget + Open Trades + Recent */}
