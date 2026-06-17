@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import { TrendingUp, Mail, Lock, Loader2, User } from "lucide-react";
+import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff, Copy, ExternalLink } from "lucide-react";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -21,6 +21,11 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [resetLink, setResetLink] = useState<string | null>(null);
 
   const { toast } = useToast();
   const { user, signIn, signUp } = useAuth();
@@ -39,8 +44,12 @@ export default function Auth() {
     }
     setIsLoading(true);
     try {
-      await api.auth.forgotPassword(email);
-      toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
+      const data = await api.auth.forgotPassword(email) as any;
+      if (data?.resetUrl) {
+        setResetLink(data.resetUrl);
+      } else {
+        toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -102,6 +111,17 @@ export default function Auth() {
     }
   };
 
+  const PasswordToggle = ({ show, onToggle }: { show: boolean; onToggle: () => void }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+      tabIndex={-1}
+    >
+      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -113,6 +133,37 @@ export default function Auth() {
             Apexium
           </span>
         </div>
+
+        {resetLink && (
+          <Card className="border-primary/40 bg-primary/5 shadow-xl mb-4">
+            <CardContent className="pt-4 pb-4 space-y-3">
+              <p className="text-sm font-semibold text-primary">Your password reset link is ready:</p>
+              <p className="text-xs text-muted-foreground">Copy the link below and open it in your browser, or click "Open" to go directly.</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={resetLink}
+                  className="text-xs font-mono bg-secondary/50"
+                />
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => { navigator.clipboard.writeText(resetLink); toast({ title: "Copied!", description: "Reset link copied to clipboard." }); }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => window.open(resetLink, "_blank")}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">This link expires in 1 hour.</p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-border/50 shadow-xl">
           <CardHeader className="text-center">
@@ -139,14 +190,15 @@ export default function Auth() {
                     <Label htmlFor="login-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="login-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+                      <Input id="login-password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : "Sign In"}
                   </Button>
                   <div className="text-center">
-                    <button type="button" onClick={handleForgotPassword} className="text-sm text-primary hover:underline">
+                    <button type="button" onClick={handleForgotPassword} disabled={isLoading} className="text-sm text-primary hover:underline disabled:opacity-50">
                       Forgot your password?
                     </button>
                   </div>
@@ -173,14 +225,16 @@ export default function Auth() {
                     <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="signup-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+                      <Input id="signup-password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">Confirm Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="confirm-password" type="password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10" required />
+                      <Input id="confirm-password" type={showConfirmPassword ? "text" : "password"} placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
