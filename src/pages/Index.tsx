@@ -17,6 +17,7 @@ import { SessionClock } from "@/components/dashboard/SessionClock";
 import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
 import { FearGreedMeter } from "@/components/dashboard/FearGreedMeter";
 import { EconomicCalendar } from "@/components/dashboard/EconomicCalendar";
+import { LiveChartPanel } from "@/components/trading/LiveChartPanel";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
@@ -30,7 +31,7 @@ import {
 } from "@/types/analysis";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Settings2, TrendingUp } from "lucide-react";
+import { BarChart3, Settings2, TrendingUp, Zap } from "lucide-react";
 
 export default function Index() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -255,20 +256,29 @@ export default function Index() {
 
             {/* Dashboard Tabs */}
             <Tabs defaultValue="analyze" className="space-y-6">
-              <TabsList className="grid w-full max-w-md mx-auto grid-cols-3">
-                <TabsTrigger value="analyze" className="gap-2">
-                  <TrendingUp className="h-4 w-4" />
+              <TabsList className="grid w-full max-w-lg mx-auto grid-cols-4">
+                <TabsTrigger value="analyze" className="gap-1.5 text-xs sm:text-sm">
+                  <TrendingUp className="h-3.5 w-3.5" />
                   Analyze
                 </TabsTrigger>
-                <TabsTrigger value="metrics" className="gap-2">
-                  <BarChart3 className="h-4 w-4" />
+                <TabsTrigger value="live" className="gap-1.5 text-xs sm:text-sm">
+                  <Zap className="h-3.5 w-3.5" />
+                  Live
+                </TabsTrigger>
+                <TabsTrigger value="metrics" className="gap-1.5 text-xs sm:text-sm">
+                  <BarChart3 className="h-3.5 w-3.5" />
                   Metrics
                 </TabsTrigger>
-                <TabsTrigger value="risk" className="gap-2">
-                  <Settings2 className="h-4 w-4" />
+                <TabsTrigger value="risk" className="gap-1.5 text-xs sm:text-sm">
+                  <Settings2 className="h-3.5 w-3.5" />
                   Risk
                 </TabsTrigger>
               </TabsList>
+
+              {/* Live Trading Tab */}
+              <TabsContent value="live" className="space-y-4">
+                <LiveChartPanel />
+              </TabsContent>
 
               {/* Analyze Tab */}
               <TabsContent value="analyze" className="space-y-8">
