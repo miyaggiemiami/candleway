@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Send, Loader2, Bot, User, Clock } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 type Msg = { role: "user" | "assistant"; content: string; isError?: boolean; retryAfter?: number };
 
@@ -9,17 +10,19 @@ const CHAT_URL = `/api/ai-chat`;
 
 async function streamChat({
   messages,
+  userName,
   onDelta,
   onDone,
 }: {
   messages: Msg[];
+  userName?: string;
   onDelta: (t: string) => void;
   onDone: () => void;
 }) {
   const resp = await fetch(CHAT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: messages.filter((m) => !m.isError) }),
+    body: JSON.stringify({ messages: messages.filter((m) => !m.isError), userName }),
   });
 
   if (resp.status === 429) {
@@ -100,6 +103,9 @@ function RateLimitMessage({ retryAfter, onRetry }: { retryAfter: number; onRetry
 }
 
 export function AIChatWidget() {
+  const { profile } = useAuth();
+  const userName = profile?.display_name || undefined;
+
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -139,6 +145,7 @@ export function AIChatWidget() {
     try {
       await streamChat({
         messages: convo,
+        userName,
         onDelta: upsert,
         onDone: () => setLoading(false),
       });

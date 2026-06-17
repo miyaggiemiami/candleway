@@ -200,8 +200,10 @@ Return ONLY valid JSON (no markdown, no extra text):
 
 // ── AI: Chat ──────────────────────────────────────────────────────────────────
 app.post("/api/ai-chat", async (req, res) => {
-  const { messages } = req.body;
+  const { messages, userName } = req.body;
   const genAI = getGemini();
+
+  const nameNote = userName ? `The user's name is ${userName}. Use their name naturally and occasionally in your replies — not every message, just when it feels natural.` : "";
 
   const systemInstruction = `You are Apexium AI, a chill trading assistant. Keep every reply short and to the point — no long paragraphs.
 
@@ -211,7 +213,9 @@ Never use asterisks (*), bullet points, hashtags, or any markdown formatting. Ju
 
 You help with chart analysis results, trading concepts, app features, MetaTrader setup, risk settings, and pricing questions.
 
-Never give specific financial advice or guarantee profits. Briefly remind users that trading involves risk where relevant.`;
+Never give specific financial advice or guarantee profits. Briefly remind users that trading involves risk where relevant.
+
+${nameNote}`.trim();
 
   const history = (messages || []).slice(0, -1).map((m: any) => ({
     role: m.role === "assistant" ? "model" : "user",
