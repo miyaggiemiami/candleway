@@ -44,7 +44,8 @@ function isModelUnavailable(err: any): boolean {
 }
 
 function isRateLimit(err: any): boolean {
-  return (err?.message || "").includes("429");
+  const msg = err?.message || "";
+  return msg.includes("429") || msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand") || msg.includes("overloaded");
 }
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
