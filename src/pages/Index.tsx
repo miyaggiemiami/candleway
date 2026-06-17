@@ -157,7 +157,7 @@ export default function Index() {
         pair,
         timeframe,
         style,
-        imageUrl: selectedImage || "",
+        imageUrl: imageBase64 || selectedImage || "",
         trend: data.trend || "Sideways",
         bias: data.bias || data.direction === 'BUY' ? 'Buy' : data.direction === 'SELL' ? 'Sell' : "No Trade",
         probability: data.probability || data.confidence || 50,

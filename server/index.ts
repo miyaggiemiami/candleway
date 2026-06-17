@@ -93,6 +93,7 @@ DECISION RULES:
 - confidence: 0-100. Only 80+ for strong multi-factor confluence.
 - risk_level: Low (clear trend + pattern), Medium (some confluence), High (unclear)
 - NEVER guarantee profit. If analysis is unclear direction must be WAIT.
+- entry, stop_loss, and take_profit MUST always be a specific numeric price level visible or derivable from the chart. NEVER use "N/A", "awaiting confirmation", or any placeholder — always estimate based on nearest key level or recent swing high/low.
 
 Return ONLY valid JSON (no markdown, no extra text):
 {

@@ -145,11 +145,29 @@ export function AnalysisResultDisplay({ result, onAnalyzeAnother }: AnalysisResu
         <div className="space-y-6">
           {/* Chart Preview */}
           <div className="glass-card overflow-hidden">
-            <img
-              src={result.imageUrl}
-              alt="Analyzed chart"
-              className="w-full aspect-video object-contain bg-background/50"
-            />
+            {result.imageUrl ? (
+              <img
+                src={result.imageUrl}
+                alt="Analyzed chart"
+                className="w-full aspect-video object-contain bg-background/50"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = "none";
+                  const parent = target.parentElement;
+                  if (parent && !parent.querySelector(".chart-fallback")) {
+                    const fallback = document.createElement("div");
+                    fallback.className = "chart-fallback w-full aspect-video flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground";
+                    fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4-4 4 4 4-8 4 4"/></svg><span class="text-sm">Chart preview unavailable</span>`;
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground">
+                <BarChart3 className="h-10 w-10 opacity-40" />
+                <span className="text-sm">Chart preview unavailable</span>
+              </div>
+            )}
           </div>
 
           {/* Support & Resistance */}
