@@ -1,0 +1,1 @@
+- [Serverless deployment](serverless-deployment.md) — hosted API entrypoints must not start a listener during module import.

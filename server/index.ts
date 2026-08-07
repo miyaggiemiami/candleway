@@ -14,6 +14,7 @@ import metatraderRouter from "./routes/metatrader";
 import stripeRouter from "./routes/stripe";
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
@@ -291,7 +292,8 @@ app.use("/api", stripeRouter);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 const VITE_PORT  = parseInt(process.env.VITE_PORT || "5173", 10);
-const isDev      = process.env.NODE_ENV !== "production";
+const isServerless = Boolean(process.env.VERCEL || process.env.NETLIFY);
+const isDev      = process.env.NODE_ENV !== "production" && !isServerless;
 
 if (isDev) {
   app.use(
@@ -311,12 +313,16 @@ if (isDev) {
   });
 }
 
-const PORT = parseInt(process.env.PORT || "5000", 10);
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`CandleWay server running on port ${PORT}`);
-  if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
-  console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
-  console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
-});
+// Vercel and Netlify import this module as a serverless function. Starting a
+// listener during import makes those deployments fail with a port error.
+if (!isServerless) {
+  const PORT = parseInt(process.env.PORT || "5000", 10);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`CandleWay server running on port ${PORT}`);
+    if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
+    console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
+    console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
+  });
+}
 
 export default app;

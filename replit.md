@@ -57,7 +57,7 @@ src/
 |-----|---------|----------|
 | `DATABASE_URL` | Replit PostgreSQL (auto-set) | Yes |
 | `GOOGLE_API_KEY` | Gemini AI for chart analysis + chat | Yes |
-| `JWT_SECRET` | JWT token signing | Yes (set in .replit userenv) |
+| `JWT_SECRET` or `SESSION_SECRET` | JWT token signing | Yes (set as a secret) |
 | `STRIPE_SECRET_KEY` | Stripe payments/subscriptions | Optional |
 | `STRIPE_PRICE_ID` | Stripe subscription price ID | Optional |
 

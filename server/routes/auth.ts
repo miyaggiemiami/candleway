@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db/index";
 import { users, profiles, passwordResets } from "../db/schema";
 import { signToken, hashPassword, comparePassword, requireAuth, AuthenticatedRequest } from "../auth";
+import { getRequestOrigin } from "../requestOrigin";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
@@ -70,7 +71,7 @@ router.post("/forgot-password", async (req, res) => {
       expires_at: expiresAt,
     });
 
-    const resetUrl = `${req.headers.origin || process.env.REPLIT_DOMAINS?.split(",")[0] || "http://localhost:5000"}/reset-password?token=${token}`;
+    const resetUrl = `${getRequestOrigin(req)}/reset-password?token=${token}`;
 
     const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
     const FROM_EMAIL = process.env.FROM_EMAIL || "noreply@candleway.app";

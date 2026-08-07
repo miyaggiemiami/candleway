@@ -1,73 +1,44 @@
-# Welcome to your Lovable project
+# Apexium — AI Trading Dashboard
 
-## Project info
+React/Vite frontend with an Express API for authentication, chart analysis,
+trade journaling, risk settings, Stripe billing, and MetaTrader connectivity.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Local development
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
+cp .env.example .env
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The development workflow serves the Express API and Vite frontend together.
+Run `npm run build && npm start` to test the production server locally.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Deploy to Vercel
 
-**Use GitHub Codespaces**
+Import the repository into Vercel. The committed `vercel.json` uses
+`npm run build`, publishes `dist`, and routes `/api/*` to the Vercel function
+in `api/[...path].ts`. Vercel will detect the function automatically.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deploy to Netlify
 
-## What technologies are used for this project?
+Import the repository into Netlify. The committed `netlify.toml` uses
+`npm run build`, publishes `dist`, routes `/api/*` to the Netlify function, and
+keeps client-side routes working on refresh.
 
-This project is built with:
+## Hosted environment variables
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Set these in the provider's environment-variable settings (not in Git):
 
-## How can I deploy this project?
+- `DATABASE_URL` — PostgreSQL connection string
+- `JWT_SECRET` — long random signing secret
+- `GOOGLE_API_KEY` — Gemini chart analysis and chat
+- `APP_URL` — deployed HTTPS origin, for example `https://app.example.com`
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
+`SENDGRID_API_KEY`, `FROM_EMAIL`, `METAAPI_TOKEN`, and `METAAPI_ACCOUNT_ID`.
+See `.env.example` for the complete list.
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+The MetaTrader 5 desktop bridge remains a separate local/remote service;
+Vercel and Netlify cannot run the Windows MT5 terminal themselves. Configure
+the bridge URL in the Live tab after deploying.

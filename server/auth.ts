@@ -2,7 +2,10 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.JWT_SECRET || "candleway-dev-secret-change-in-prod";
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.SESSION_SECRET ||
+  "candleway-dev-secret-change-in-prod";
 const JWT_EXPIRES_IN = "30d";
 
 export interface JwtPayload {
