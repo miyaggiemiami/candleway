@@ -289,11 +289,9 @@ app.get("/api/fear-greed", async (_req, res) => {
 app.use("/api", stripeRouter);
 
 // ── Static files (production) / Dev proxy ────────────────────────────────────
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
-const VITE_PORT  = parseInt(process.env.VITE_PORT || "5173", 10);
+const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
 const isServerless = Boolean(process.env.VERCEL || process.env.NETLIFY);
-const isDev      = process.env.NODE_ENV !== "production" && !isServerless;
+const isDev = process.env.NODE_ENV !== "production" && !isServerless;
 
 if (isDev) {
   app.use(
@@ -304,8 +302,11 @@ if (isDev) {
       ws: true,
     })
   );
-} else {
-  const distPath = path.join(__dirname, "..", "dist");
+} else if (!isServerless) {
+  // Function hosts serve the built SPA themselves. Avoid evaluating
+  // import.meta.url/fileURLToPath in a serverless bundle: Netlify's esbuild
+  // output does not provide import.meta.url at runtime.
+  const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
   app.use(express.static(distPath));
   app.get(/(.*)/, (req, res, next) => {
     if (req.path.startsWith("/api")) return next();

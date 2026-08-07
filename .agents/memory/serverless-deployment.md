@@ -13,3 +13,8 @@ deployment/runtime failure.
 **How to apply:** Keep provider-specific entrypoints thin: export the Express
 app directly for Vercel's Node runtime and use an adapter such as
 `serverless-http` for Netlify events.
+
+Avoid evaluating `fileURLToPath(import.meta.url)` in serverless bundles. Netlify
+can bundle the module without a usable `import.meta.url`; static SPA files
+should be served by Netlify/Vercel, while filesystem-based static serving is
+only needed by the long-running local/Replit server.
