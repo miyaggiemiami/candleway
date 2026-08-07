@@ -1,0 +1,57 @@
+The Netlify deploy errored, with the following guidance provided:
+
+The build is failing because npm is trying to fetch `lightweight-charts` from a Replit-local package registry (`http://package-firewall.replit.local/...`) as seen at [line 26](#L26). This indicates the `package-lock.json` was generated inside a Replit environment and contains a Replit-specific registry URL that is not accessible on Netlify's build servers.
+
+**Solution:**
+
+1. Delete your `package-lock.json` file locally (not in Replit).
+2. Run `npm install` in your local environment to regenerate a clean `package-lock.json` pointing to the public npm registry.
+3. Commit and push the new `package-lock.json` to your repo:
+
+```bash
+rm package-lock.json
+npm install
+git add package-lock.json
+git commit -m "Regenerate package-lock.json with public registry"
+git push
+```
+
+This will ensure Netlify fetches `lightweight-charts` and all other packages from the standard npm registry instead of the Replit-internal proxy.
+
+The relevant error logs are:
+
+Line 0: build-image version: 969defd95f3977f8de9cb1f48802a7e6f3d8c0b3 (noble-new-builds)
+Line 1: buildbot version: 2aca7e86d0b37a7dabcc6c9662e9f7cffdfc48ef
+Line 2: Fetching cached dependencies
+Line 3: Failed to fetch cache, continuing with build
+Line 4: Starting to prepare the repo for build
+Line 5: No cached dependencies found. Cloning fresh repo
+Line 6: git clone --filter=blob:none https://github.com/miyaggiemiami/candleway
+Line 7: Preparing Git Reference refs/heads/main
+Line 8: Installing dependencies
+Line 9: mise ~/.config/mise/config.toml tools: python@3.14.3
+Line 10: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+Line 11: mise ~/.config/mise/config.toml tools: go@1.26.2
+Line 12: Downloading and installing node v24.19.0...
+Line 13: Downloading https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz...
+Line 14: Computing checksum with sha256sum
+Line 15: Checksums matched!
+Line 16: Now using node v24.19.0 (npm v11.17.0)
+Line 17: Enabling Node.js Corepack
+Line 18: No npm workspaces detected
+Line 19: Installing npm packages using npm version 11.17.0
+Line 20: npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+Line 21: npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+Line 22: Failed during stage 'Install dependencies': dependency_installation script returned non-zero exit code: 1
+Line 23: npm error code ENOTFOUND
+Line 24: npm error syscall getaddrinfo
+Line 25: npm error errno ENOTFOUND
+Line 26: npm error network request to http://package-firewall.replit.local/npm/lightweight-charts/-/lightweight-charts-5.2.0.tgz failed, 
+Line 27: npm error network This is a problem related to network connectivity.
+Line 28: npm error network In most cases you are behind a proxy or have bad network settings.
+Line 29: npm error network
+Line 30: npm error network If you are behind a proxy, please make sure that the 'proxy' config is set properly.  See: 'npm help config'
+Line 31: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-08-07T11_01_33_049Z-debug-0.log
+Line 32: Error during npm install
+Line 33: Failing build: Failed to install dependencies
+Line 34: Finished processing build request in 1m19.285s
