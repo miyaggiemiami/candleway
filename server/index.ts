@@ -290,7 +290,7 @@ app.use("/api", stripeRouter);
 
 // ── Static files (production) / Dev proxy ────────────────────────────────────
 const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
-const isServerless = Boolean(process.env.VERCEL || process.env.NETLIFY);
+const isServerless = Boolean(process.env.VERCEL);
 const isDev = process.env.NODE_ENV !== "production" && !isServerless;
 
 if (isDev) {
@@ -303,9 +303,8 @@ if (isDev) {
     })
   );
 } else if (!isServerless) {
-  // Function hosts serve the built SPA themselves. Avoid evaluating
-  // import.meta.url/fileURLToPath in a serverless bundle: Netlify's esbuild
-  // output does not provide import.meta.url at runtime.
+  // The long-running Node server serves the built SPA. Vercel serves the
+  // frontend from `dist` and imports this module only for the API function.
   const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
   app.use(express.static(distPath));
   app.get(/(.*)/, (req, res, next) => {
@@ -314,8 +313,8 @@ if (isDev) {
   });
 }
 
-// Vercel and Netlify import this module as a serverless function. Starting a
-// listener during import makes those deployments fail with a port error.
+// Vercel imports this module as a serverless function. Starting a listener
+// during import would make that deployment fail with a port error.
 if (!isServerless) {
   const PORT = parseInt(process.env.PORT || "5000", 10);
   app.listen(PORT, "0.0.0.0", () => {

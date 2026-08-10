@@ -20,11 +20,12 @@ Import the repository into Vercel. The committed `vercel.json` uses
 `npm run build`, publishes `dist`, and routes `/api/*` to the Vercel function
 in `api/[...path].ts`. Vercel will detect the function automatically.
 
-## Deploy to Netlify
+## Deploy to another Node hosting provider
 
-Import the repository into Netlify. The committed `netlify.toml` uses
-`npm run build`, publishes `dist`, routes `/api/*` to the Netlify function, and
-keeps client-side routes working on refresh.
+Use a provider that supports a long-running Node.js process. Configure the
+build command as `npm run build` and the start command as `npm start`. The
+server listens on the provider's `PORT` environment variable and serves both
+the built frontend and `/api/*`.
 
 ## Hosted environment variables
 
@@ -40,5 +41,5 @@ Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
 See `.env.example` for the complete list.
 
 The MetaTrader 5 desktop bridge remains a separate local/remote service;
-Vercel and Netlify cannot run the Windows MT5 terminal themselves. Configure
-the bridge URL in the Live tab after deploying.
+serverless and hosted web deployments cannot run the Windows MT5 terminal
+themselves. Configure the bridge URL in the Live tab after deploying.
