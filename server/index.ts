@@ -1,10 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import path from "path";
-import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import authRouter from "./routes/auth";
 import profilesRouter from "./routes/profiles";
 import analysesRouter from "./routes/analyses";
 import tradesRouter from "./routes/trades";
@@ -48,9 +44,6 @@ function isRateLimit(err: any): boolean {
   const msg = err?.message || "";
   return msg.includes("429") || msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand") || msg.includes("overloaded");
 }
-
-// ── Auth routes ───────────────────────────────────────────────────────────────
-app.use("/api/auth", authRouter);
 
 // ── Data routes ───────────────────────────────────────────────────────────────
 app.use("/api/profiles", profilesRouter);
@@ -287,42 +280,5 @@ app.get("/api/fear-greed", async (_req, res) => {
 
 // ── Stripe routes (mounted last so they don't intercept open AI endpoints) ────
 app.use("/api", stripeRouter);
-
-// ── Static files (production) / Dev proxy ────────────────────────────────────
-const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
-const isServerless = Boolean(process.env.VERCEL);
-const isDev = process.env.NODE_ENV !== "production" && !isServerless;
-
-if (isDev) {
-  app.use(
-    "/",
-    createProxyMiddleware({
-      target: `http://localhost:${VITE_PORT}`,
-      changeOrigin: true,
-      ws: true,
-    })
-  );
-} else if (!isServerless) {
-  // The long-running Node server serves the built SPA. Vercel serves the
-  // frontend from `dist` and imports this module only for the API function.
-  const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
-  app.use(express.static(distPath));
-  app.get(/(.*)/, (req, res, next) => {
-    if (req.path.startsWith("/api")) return next();
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
-
-// Vercel imports this module as a serverless function. Starting a listener
-// during import would make that deployment fail with a port error.
-if (!isServerless) {
-  const PORT = parseInt(process.env.PORT || "5000", 10);
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`CandleWay server running on port ${PORT}`);
-    if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
-    console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
-    console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
-  });
-}
 
 export default app;

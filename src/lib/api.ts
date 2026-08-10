@@ -1,26 +1,24 @@
-const TOKEN_KEY = "cw_token";
+import { supabase } from "@/integrations/supabase/client";
 
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+export function getApiUrl(path: string): string {
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+  return `${apiBaseUrl}${path}`;
 }
 
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function removeToken() {
-  localStorage.removeItem(TOKEN_KEY);
+export async function getToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
 }
 
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const token = await getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(getApiUrl(path), { ...options, headers });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
@@ -30,17 +28,6 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
 }
 
 export const api = {
-  auth: {
-    signup: (email: string, password: string, displayName?: string) =>
-      request("/api/auth/signup", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
-    signin: (email: string, password: string) =>
-      request("/api/auth/signin", { method: "POST", body: JSON.stringify({ email, password }) }),
-    me: () => request("/api/auth/me"),
-    forgotPassword: (email: string) =>
-      request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
-    resetPassword: (token: string, password: string) =>
-      request("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) }),
-  },
   profiles: {
     get: () => request("/api/profiles"),
     update: (data: Record<string, any>) =>

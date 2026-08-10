@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Send, Loader2, Bot, User, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { getApiUrl } from "@/lib/api";
 
 type Msg = { role: "user" | "assistant"; content: string; isError?: boolean; retryAfter?: number };
 
-const CHAT_URL = `/api/ai-chat`;
+const CHAT_URL = getApiUrl("/api/ai-chat");
 
 async function streamChat({
   messages,

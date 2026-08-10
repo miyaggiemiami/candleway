@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";
-import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff, Copy, ExternalLink } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -20,12 +20,11 @@ export default function Auth() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("login");
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.pathname === "/signup" ? "signup" : "login");
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [resetLink, setResetLink] = useState<string | null>(null);
 
   const { toast } = useToast();
   const { user, signIn, signUp } = useAuth();
@@ -44,12 +43,11 @@ export default function Auth() {
     }
     setIsLoading(true);
     try {
-      const data = await api.auth.forgotPassword(email) as any;
-      if (data?.resetUrl) {
-        setResetLink(data.resetUrl);
-      } else {
-        toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
-      }
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -58,8 +56,16 @@ export default function Auth() {
   };
 
   useEffect(() => {
-    if (user) navigate("/");
-  }, [user, navigate]);
+    if (user) {
+      const requestedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+      const destination = requestedPath?.startsWith("/") ? requestedPath : "/dashboard";
+      navigate(destination, { replace: true });
+    }
+  }, [user, navigate, location.state]);
+
+  useEffect(() => {
+    setActiveTab(location.pathname === "/signup" ? "signup" : "login");
+  }, [location.pathname]);
 
   const validateInputs = (isSignUp: boolean) => {
     try { emailSchema.parse(email); } catch {
@@ -133,37 +139,6 @@ export default function Auth() {
             Apexium
           </span>
         </div>
-
-        {resetLink && (
-          <Card className="border-primary/40 bg-primary/5 shadow-xl mb-4">
-            <CardContent className="pt-4 pb-4 space-y-3">
-              <p className="text-sm font-semibold text-primary">Your password reset link is ready:</p>
-              <p className="text-xs text-muted-foreground">Copy the link below and open it in your browser, or click "Open" to go directly.</p>
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value={resetLink}
-                  className="text-xs font-mono bg-secondary/50"
-                />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => { navigator.clipboard.writeText(resetLink); toast({ title: "Copied!", description: "Reset link copied to clipboard." }); }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => window.open(resetLink, "_blank")}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">This link expires in 1 hour.</p>
-            </CardContent>
-          </Card>
-        )}
 
         <Card className="border-border/50 shadow-xl">
           <CardHeader className="text-center">

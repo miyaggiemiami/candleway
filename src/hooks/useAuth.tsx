@@ -1,11 +1,10 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api, getToken, setToken, removeToken } from "@/lib/api";
+import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
+import type { Session, User } from "@supabase/supabase-js";
 import { SubscriptionTier } from "@/types/trading";
 
-interface AuthUser {
-  id: string;
-  email: string;
-}
+type AuthUser = User;
 
 interface UserProfile {
   id: string;
@@ -20,7 +19,7 @@ interface UserProfile {
 
 interface AuthContextType {
   user: AuthUser | null;
-  session: { access_token: string } | null;
+  session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>;
@@ -36,12 +35,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const token = getToken();
-  const session = token ? { access_token: token } : null;
-
   const fetchProfile = async () => {
+    if (!user) return;
     try {
       const data = await api.profiles.get();
       setProfile({
@@ -65,7 +63,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const checkSubscription = async () => {
-    if (!token) return;
+    if (!session) return;
     try {
       await api.stripe.checkSubscription();
       await fetchProfile();
@@ -75,31 +73,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const init = async () => {
-      const savedToken = getToken();
-      if (!savedToken) {
-        setLoading(false);
-        return;
+    let mounted = true;
+
+    const applySession = async (nextSession: Session | null) => {
+      if (!mounted) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      if (nextSession?.user) {
+        try {
+          const data = await api.profiles.get();
+          setProfile({
+            ...data,
+            subscription_tier: data.subscription_tier || "free",
+          } as UserProfile);
+        } catch (err) {
+          console.error("Error fetching profile:", err);
+        }
+      } else {
+        setProfile(null);
       }
-      try {
-        const userData = await api.auth.me();
-        setUser({ id: userData.id, email: userData.email });
-        await fetchProfile();
-      } catch {
-        removeToken();
-      } finally {
-        setLoading(false);
-      }
+      if (mounted) setLoading(false);
     };
-    init();
+
+    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      // Defer the profile request until Supabase finishes its auth callback.
+      // Calling getSession synchronously inside this listener can deadlock.
+      setTimeout(() => void applySession(nextSession), 0);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
-      const data = await api.auth.signup(email, password, displayName);
-      setToken(data.token);
-      setUser({ id: data.user.id, email: data.user.email });
-      await fetchProfile();
+      const { error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: { display_name: displayName?.trim() || null },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
+      });
+      if (error) throw error;
       return { error: null };
     } catch (err: any) {
       return { error: new Error(err.message || "Sign up failed") };
@@ -108,10 +127,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const data = await api.auth.signin(email, password);
-      setToken(data.token);
-      setUser({ id: data.user.id, email: data.user.email });
-      await fetchProfile();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error) throw error;
       return { error: null };
     } catch (err: any) {
       return { error: new Error(err.message || "Sign in failed") };
@@ -119,9 +139,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    removeToken();
-    setUser(null);
-    setProfile(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Sign out error:", error);
   };
 
   return (

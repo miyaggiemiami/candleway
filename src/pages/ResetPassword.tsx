@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { TrendingUp, Lock, Loader2, CheckCircle, Eye, EyeOff } from "lucide-react";
 
 export default function ResetPassword() {
@@ -13,12 +13,30 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [checkingRecoverySession, setCheckingRecoverySession] = useState(true);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setHasRecoverySession(Boolean(data.session));
+      setCheckingRecoverySession(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" || session) {
+        setHasRecoverySession(Boolean(session));
+        setCheckingRecoverySession(false);
+      }
+    });
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,10 +52,12 @@ export default function ResetPassword() {
 
     setIsLoading(true);
     try {
-      await api.auth.resetPassword(token!, password);
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
       setIsSuccess(true);
       toast({ title: "Password Updated", description: "Your password has been successfully reset." });
-      setTimeout(() => navigate("/auth"), 2000);
+      await supabase.auth.signOut();
+      setTimeout(() => navigate("/login"), 2000);
     } catch (err: any) {
       toast({ title: "Reset Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -56,13 +76,21 @@ export default function ResetPassword() {
     </button>
   );
 
-  if (!token) {
+  if (checkingRecoverySession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!hasRecoverySession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md border-border/50 shadow-xl">
           <CardContent className="pt-6 text-center space-y-4">
             <p className="text-muted-foreground">Invalid or expired reset link. Please request a new one.</p>
-            <Button onClick={() => navigate("/auth")}>Back to Login</Button>
+            <Button onClick={() => navigate("/login")}>Back to Login</Button>
           </CardContent>
         </Card>
       </div>

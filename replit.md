@@ -9,7 +9,7 @@ CandleWay is an AI-powered trading automation platform. Users upload chart scree
 - **Backend**: Express.js server (`server/`) with TypeScript via `tsx`
 - **Database**: Replit PostgreSQL via Drizzle ORM
 - **AI**: Google Gemini (gemini-2.0-flash / gemini-2.5-flash) for chart analysis and AI chat
-- **Auth**: Custom JWT auth (bcrypt password hashing, 30-day tokens stored in localStorage)
+- **Auth**: Supabase Auth sessions with the existing PostgreSQL profile/feature tables
 
 ## Running the App
 
@@ -26,12 +26,11 @@ The Express server proxies all non-API requests to Vite in development. The webv
 ```
 server/
   index.ts          # Express app entry point + AI endpoints (/api/analyze-chart, /api/ai-chat)
-  auth.ts           # JWT sign/verify, bcrypt, requireAuth middleware
+  auth.ts           # Supabase bearer-token verification middleware
   db/
     index.ts        # Drizzle + pg Pool setup
     schema.ts       # All table definitions
   routes/
-    auth.ts         # /api/auth/* — signup, signin, me, forgot/reset password
     profiles.ts     # /api/profiles — user profile CRUD
     analyses.ts     # /api/analyses — chart analysis history
     trades.ts       # /api/trades — trade log
@@ -48,7 +47,7 @@ src/
   hooks/useTrades.ts
   pages/            # Index, Auth, History, Pricing, Settings, ResetPassword
   components/       # UI components
-  integrations/supabase/client.ts  # Stub — Supabase removed, replaced by Express API
+  integrations/supabase/client.ts  # Supabase Auth browser client
 ```
 
 ## Environment Variables / Secrets
@@ -57,7 +56,9 @@ src/
 |-----|---------|----------|
 | `DATABASE_URL` | Replit PostgreSQL (auto-set) | Yes |
 | `GOOGLE_API_KEY` | Gemini AI for chart analysis + chat | Yes |
-| `JWT_SECRET` or `SESSION_SECRET` | JWT token signing | Yes (set as a secret) |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Server-side Supabase Auth token verification | Yes |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser Supabase Auth client | Yes |
+| `VITE_API_BASE_URL` | HTTPS origin of the Express API when frontend is hosted separately | Optional |
 | `STRIPE_SECRET_KEY` | Stripe payments/subscriptions | Optional |
 | `STRIPE_PRICE_ID` | Stripe subscription price ID | Optional |
 
@@ -71,12 +72,13 @@ src/
 6. **Subscriptions** — Stripe-based premium tier (unlimited analyses, advanced AI)
 
 ## Authentication Flow
-- Users sign up/in via `/api/auth/signup` and `/api/auth/signin`
-- JWT token stored in `localStorage` as `cw_token`
-- All protected API routes use `requireAuth` middleware
-- Password reset via email link (SendGrid optional; logs link to console in dev)
+- Users sign up/in through Supabase Auth (`auth.users`)
+- Supabase persists and refreshes the browser session
+- All protected API routes verify the Supabase bearer token
+- Profiles and feature records use the Supabase user ID as their owner key
+- Password reset uses Supabase's recovery email/session flow
 
 ## Notes
-- Supabase has been fully removed — all data uses Replit PostgreSQL via Drizzle
+- Supabase Auth is the single account system; Replit PostgreSQL is used for feature/profile storage
 - Edge functions (analyze-chart, ai-chat, check-subscription, etc.) are now Express routes
 - The Supabase `client.ts` file is kept as a stub to avoid import errors

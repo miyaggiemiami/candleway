@@ -3,7 +3,9 @@ import { pgTable, uuid, text, boolean, integer, numeric, timestamp, unique } fro
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
-  password_hash: text("password_hash").notNull(),
+  // This is only a compatibility marker for the local feature-table foreign
+  // keys. Passwords and account lifecycle are owned by Supabase Auth.
+  password_hash: text("password_hash").notNull().default("supabase-auth"),
   created_at: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -102,13 +104,4 @@ export const metatraderSettings = pgTable("metatrader_settings", {
   platform: text("platform").notNull().default("mt5"),
   created_at: timestamp("created_at").notNull().defaultNow(),
   updated_at: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const passwordResets = pgTable("password_resets", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  expires_at: timestamp("expires_at").notNull(),
-  used: boolean("used").notNull().default(false),
-  created_at: timestamp("created_at").notNull().defaultNow(),
 });

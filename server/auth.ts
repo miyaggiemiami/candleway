@@ -1,54 +1,59 @@
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import { Request, Response, NextFunction } from "express";
+import { createClient, User } from "@supabase/supabase-js";
+import { db } from "./db/index";
+import { users } from "./db/schema";
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  process.env.SESSION_SECRET ||
-  "candleway-dev-secret-change-in-prod";
-const JWT_EXPIRES_IN = "30d";
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY;
 
-export interface JwtPayload {
-  userId: string;
-  email: string;
-}
-
-export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-}
-
-export function verifyToken(token: string): JwtPayload | null {
-  try {
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
-  } catch {
-    return null;
-  }
-}
-
-export function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
-}
-
-export function comparePassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
+const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   userEmail?: string;
+  authUser?: User;
 }
 
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "No authorization header" });
   }
-  const token = authHeader.slice(7);
-  const payload = verifyToken(token);
-  if (!payload) {
-    return res.status(401).json({ error: "Invalid or expired token" });
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase authentication is not configured" });
   }
-  req.userId = payload.userId;
-  req.userEmail = payload.email;
-  next();
+
+  try {
+    const { data, error } = await supabase.auth.getUser(authHeader.slice(7));
+    if (error || !data.user) {
+      return res.status(401).json({ error: "Invalid or expired Supabase session" });
+    }
+
+    req.userId = data.user.id;
+    req.userEmail = data.user.email || "";
+    req.authUser = data.user;
+
+    // The Replit PostgreSQL tables are feature/profile storage only. Keep a
+    // lightweight mirror so their existing foreign keys continue to work; the
+    // account and password remain managed exclusively by Supabase Auth.
+    await db.insert(users)
+      .values({ id: data.user.id, email: data.user.email || "", password_hash: "supabase-auth" })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: { email: data.user.email || "" },
+      });
+
+    next();
+  } catch (error) {
+    console.error("Supabase auth verification error:", error);
+    return res.status(401).json({ error: "Unable to verify Supabase session" });
+  }
 }

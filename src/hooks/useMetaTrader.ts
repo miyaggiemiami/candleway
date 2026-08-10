@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
-import { getToken } from '@/lib/api';
+import { getToken, getApiUrl } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 async function callMetaTraderAPI(body: object) {
-  const token = getToken();
-  const response = await fetch('/api/metatrader/trade', {
+  const token = await getToken();
+  const response = await fetch(getApiUrl('/api/metatrader/trade'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -14,11 +14,15 @@ npm run dev
 The development workflow serves the Express API and Vite frontend together.
 Run `npm run build && npm start` to test the production server locally.
 
-## Deploy to Vercel
+## Deploy the SPA
 
-Import the repository into Vercel. The committed `vercel.json` uses
-`npm run build`, publishes `dist`, and routes `/api/*` to the Vercel function
-in `api/[...path].ts`. Vercel will detect the function automatically.
+Use `npm run build` with `dist` as the publish directory. Netlify uses the
+committed `public/_redirects` file and Vercel uses the minimal `vercel.json`
+rewrite so browser refreshes on client routes continue to load the SPA.
+
+The Express API remains a separate Node process. Set `VITE_API_BASE_URL` to its
+HTTPS origin when deploying the frontend separately; leave it blank when the
+frontend and API are served together.
 
 ## Deploy to another Node hosting provider
 
@@ -32,9 +36,9 @@ the built frontend and `/api/*`.
 Set these in the provider's environment-variable settings (not in Git):
 
 - `DATABASE_URL` — PostgreSQL connection string
-- `JWT_SECRET` — long random signing secret
+- `SUPABASE_URL` and `SUPABASE_ANON_KEY` — server-side Supabase Auth API access
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` — browser Supabase Auth access
 - `GOOGLE_API_KEY` — Gemini chart analysis and chat
-- `APP_URL` — deployed HTTPS origin, for example `https://app.example.com`
 
 Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
 `SENDGRID_API_KEY`, `FROM_EMAIL`, `METAAPI_TOKEN`, and `METAAPI_ACCOUNT_ID`.

@@ -18,7 +18,7 @@ import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
 import { FearGreedMeter } from "@/components/dashboard/FearGreedMeter";
 import { EconomicCalendar } from "@/components/dashboard/EconomicCalendar";
 import { LiveChartPanel } from "@/components/trading/LiveChartPanel";
-import { api } from "@/lib/api";
+import { api, getApiUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
 import { useTrades } from "@/hooks/useTrades";
@@ -120,7 +120,7 @@ export default function Index() {
     
     try {
       const imageBase64 = await convertFileToBase64(selectedFile);
-      const response = await fetch('/api/analyze-chart', {
+      const response = await fetch(getApiUrl('/api/analyze-chart'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64, pair, timeframe, style }),
