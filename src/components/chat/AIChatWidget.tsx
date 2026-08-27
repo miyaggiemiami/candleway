@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Send, Loader2, Bot, User, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { getApiUrl } from "@/lib/api";
+import { getApiUrl, getToken } from "@/lib/api";
 
 type Msg = { role: "user" | "assistant"; content: string; isError?: boolean; retryAfter?: number };
 
@@ -20,11 +20,19 @@ async function streamChat({
   onDelta: (t: string) => void;
   onDone: () => void;
 }) {
+  const token = await getToken();
   const resp = await fetch(CHAT_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ messages: messages.filter((m) => !m.isError), userName }),
   });
+
+  if (resp.status === 401) {
+    throw new Error("Please sign in to use the AI assistant.");
+  }
 
   if (resp.status === 429) {
     const data = await resp.json().catch(() => ({}));

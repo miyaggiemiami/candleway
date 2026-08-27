@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db/index";
 import { analyses } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -52,7 +52,12 @@ router.post("/", async (req: AuthenticatedRequest, res) => {
 
 router.delete("/:id", async (req: AuthenticatedRequest, res) => {
   try {
-    await db.delete(analyses).where(eq(analyses.id, req.params.id));
+    const id = String(req.params.id);
+    const [deleted] = await db
+      .delete(analyses)
+      .where(and(eq(analyses.id, id), eq(analyses.user_id, req.userId!)))
+      .returning({ id: analyses.id });
+    if (!deleted) return res.status(404).json({ error: "Analysis not found" });
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

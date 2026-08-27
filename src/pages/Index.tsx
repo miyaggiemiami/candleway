@@ -18,7 +18,7 @@ import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
 import { FearGreedMeter } from "@/components/dashboard/FearGreedMeter";
 import { EconomicCalendar } from "@/components/dashboard/EconomicCalendar";
 import { LiveChartPanel } from "@/components/trading/LiveChartPanel";
-import { api, getApiUrl } from "@/lib/api";
+import { api, getApiUrl, getToken } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
 import { useTrades } from "@/hooks/useTrades";
@@ -120,12 +120,32 @@ export default function Index() {
     
     try {
       const imageBase64 = await convertFileToBase64(selectedFile);
+      const token = await getToken();
       const response = await fetch(getApiUrl('/api/analyze-chart'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ imageBase64, pair, timeframe, style }),
       });
       const data = await response.json();
+
+      if (response.status === 401) {
+        toast({ title: "Sign in required", description: "Please sign in to analyze charts.", variant: "destructive" });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (response.status === 429 && data?.error === "daily_limit_reached") {
+        toast({
+          title: "Daily Limit Reached",
+          description: data.message || "You've used all your free analyses today. Upgrade to Premium for unlimited analyses.",
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
 
       if (response.status === 429 || data?.error === "rate_limit") {
         const secs = data?.retryAfter || 60;

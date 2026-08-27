@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db/index";
 import { trades, analyses } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -67,13 +67,18 @@ router.patch("/:id", async (req: AuthenticatedRequest, res) => {
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
 
+    const id = String(req.params.id);
     const [trade] = await db
       .update(trades)
       .set(updates)
-      .where(eq(trades.id, req.params.id))
+      .where(and(eq(trades.id, id), eq(trades.user_id, req.userId!)))
       .returning();
 
+    if (!trade) return res.status(404).json({ error: "Trade not found" });
     return res.json(trade);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
