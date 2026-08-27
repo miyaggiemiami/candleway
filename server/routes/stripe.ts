@@ -13,7 +13,14 @@ router.use(requireAuth);
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
-  return new Stripe(key, { apiVersion: "2025-08-27.basil" });
+  // Pin to the API version the installed `stripe` SDK (20.x) actually ships types for.
+  return new Stripe(key, { apiVersion: "2025-08-27.basil" as Stripe.LatestApiVersion });
+}
+
+function getPriceId(): string {
+  const priceId = process.env.STRIPE_PRICE_ID;
+  if (!priceId) throw new Error("STRIPE_PRICE_ID is not configured");
+  return priceId;
 }
 
 router.post("/check-subscription", async (req: AuthenticatedRequest, res) => {
@@ -35,7 +42,9 @@ router.post("/check-subscription", async (req: AuthenticatedRequest, res) => {
     let subscriptionEnd = null;
 
     if (hasActiveSub) {
-      subscriptionEnd = new Date(subscriptions.data[0].current_period_end * 1000).toISOString();
+      // Stripe moved the period end onto the subscription item, not the subscription itself.
+      const periodEndUnix = subscriptions.data[0].items.data[0]?.current_period_end;
+      subscriptionEnd = periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null;
       await db.update(profiles).set({ is_premium: true, subscription_tier: "premium" }).where(eq(profiles.user_id, req.userId!));
     } else {
       await db.update(profiles).set({ is_premium: false, subscription_tier: "free" }).where(eq(profiles.user_id, req.userId!));
@@ -60,7 +69,7 @@ router.post("/create-checkout", async (req: AuthenticatedRequest, res) => {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : email,
-      line_items: [{ price: process.env.STRIPE_PRICE_ID || "price_1ShUXxL3nNsJOqbulVzAIF72", quantity: 1 }],
+      line_items: [{ price: getPriceId(), quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}/pricing?success=true`,
       cancel_url: `${origin}/pricing?canceled=true`,

@@ -37,10 +37,14 @@ router.get("/", async (req: AuthenticatedRequest, res) => {
 router.patch("/", async (req: AuthenticatedRequest, res) => {
   try {
     const allowed = ["display_name", "username", "trading_style", "preferred_pair", "preferred_timeframe", "daily_analyses_used", "last_analysis_reset"];
-    const updates: Record<string, any> = { updated_at: new Date() };
+    const updates: Record<string, any> = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+    updates.updated_at = new Date();
 
     const [profile] = await db
       .update(profiles)

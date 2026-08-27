@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { eq } from "drizzle-orm";
 import profilesRouter from "./routes/profiles";
 import analysesRouter from "./routes/analyses";
 import tradesRouter from "./routes/trades";
@@ -8,6 +9,11 @@ import riskSettingsRouter from "./routes/riskSettings";
 import riskConsentRouter from "./routes/riskConsent";
 import metatraderRouter from "./routes/metatrader";
 import stripeRouter from "./routes/stripe";
+import { requireAuth, AuthenticatedRequest } from "./auth";
+import { db } from "./db/index";
+import { profiles } from "./db/schema";
+
+const FREE_DAILY_ANALYSIS_LIMIT = 10;
 
 const app = express();
 app.set("trust proxy", 1);
@@ -62,10 +68,29 @@ app.post("/api/execute-metatrader-trade", (req, res) => {
 });
 
 // ── AI: Chart Analysis ────────────────────────────────────────────────────────
-app.post("/api/analyze-chart", async (req, res) => {
+// Requires auth and enforces the daily free-tier limit server-side. The client
+// also tracks/display this, but that check alone can be bypassed by calling
+// this endpoint directly, which would otherwise let anyone burn the Gemini quota.
+app.post("/api/analyze-chart", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { imageBase64, pair, timeframe, style } = req.body;
     if (!imageBase64) return res.json({ error: "No image provided" });
+
+    let [profile] = await db.select().from(profiles).where(eq(profiles.user_id, req.userId!)).limit(1);
+    if (!profile) {
+      [profile] = await db.insert(profiles).values({ user_id: req.userId! }).returning();
+    }
+
+    const lastReset = profile.last_analysis_reset ? new Date(profile.last_analysis_reset) : null;
+    const hoursSinceReset = lastReset ? (Date.now() - lastReset.getTime()) / (1000 * 60 * 60) : 25;
+    const usedToday = hoursSinceReset >= 24 ? 0 : profile.daily_analyses_used || 0;
+
+    if (!profile.is_premium && usedToday >= FREE_DAILY_ANALYSIS_LIMIT) {
+      return res.status(429).json({
+        error: "daily_limit_reached",
+        message: `You've used all ${FREE_DAILY_ANALYSIS_LIMIT} free analyses today. Upgrade to Premium for unlimited analyses.`,
+      });
+    }
 
     const genAI = getGemini();
 
@@ -195,7 +220,8 @@ Return ONLY valid JSON (no markdown, no extra text):
 });
 
 // ── AI: Chat ──────────────────────────────────────────────────────────────────
-app.post("/api/ai-chat", async (req, res) => {
+app.post("/api/ai-chat", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
   const { messages, userName } = req.body;
   const genAI = getGemini();
 
@@ -262,6 +288,14 @@ ${nameNote}`.trim();
   }
   res.write(`data: ${JSON.stringify({ error: lastErr?.message })}\n\n`);
   res.end();
+  } catch (error: any) {
+    console.error("Error in ai-chat:", error);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: error.message || "An unexpected error occurred" });
+    }
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
+  }
 });
 
 // ── Fear & Greed proxy ────────────────────────────────────────────────────────

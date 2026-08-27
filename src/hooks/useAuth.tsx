@@ -95,7 +95,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (mounted) setLoading(false);
     };
 
-    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    supabase.auth
+      .getSession()
+      .then(({ data }) => applySession(data.session))
+      .catch((err) => {
+        console.error("Error restoring session:", err);
+        if (mounted) setLoading(false);
+      });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       // Defer the profile request until Supabase finishes its auth callback.
       // Calling getSession synchronously inside this listener can deadlock.
