@@ -1,26 +1,18 @@
-const TOKEN_KEY = "cw_token";
+import { supabase } from "@/integrations/supabase/client";
 
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function removeToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const { data: { session } } = await supabase.auth.getSession();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {}),
     ...(options.headers || {}),
   };
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
@@ -30,17 +22,6 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
 }
 
 export const api = {
-  auth: {
-    signup: (email: string, password: string, displayName?: string) =>
-      request("/api/auth/signup", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
-    signin: (email: string, password: string) =>
-      request("/api/auth/signin", { method: "POST", body: JSON.stringify({ email, password }) }),
-    me: () => request("/api/auth/me"),
-    forgotPassword: (email: string) =>
-      request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
-    resetPassword: (token: string, password: string) =>
-      request("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) }),
-  },
   profiles: {
     get: () => request("/api/profiles"),
     update: (data: Record<string, any>) =>

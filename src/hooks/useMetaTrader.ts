@@ -1,20 +1,9 @@
 import { useState, useCallback } from 'react';
-import { getToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 async function callMetaTraderAPI(body: object) {
-  const token = getToken();
-  const response = await fetch('/api/metatrader/trade', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Request failed');
-  return data;
+  return api.metatrader.trade(body);
 }
 
 interface AccountInfo {

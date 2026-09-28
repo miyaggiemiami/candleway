@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";
-import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff, Copy, ExternalLink } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -25,11 +25,11 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const [resetLink, setResetLink] = useState<string | null>(null);
-
   const { toast } = useToast();
   const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   const handleForgotPassword = async () => {
     if (!email) {
@@ -44,12 +44,11 @@ export default function Auth() {
     }
     setIsLoading(true);
     try {
-      const data = await api.auth.forgotPassword(email) as any;
-      if (data?.resetUrl) {
-        setResetLink(data.resetUrl);
-      } else {
-        toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
-      }
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -58,8 +57,18 @@ export default function Auth() {
   };
 
   useEffect(() => {
-    if (user) navigate("/");
-  }, [user, navigate]);
+    if (!user) return;
+    const redirect = searchParams.get("redirect");
+    const safeRedirect = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+      ? redirect
+      : "/";
+    navigate(safeRedirect, { replace: true });
+  }, [user, navigate, searchParams]);
+
+  useEffect(() => {
+    if (location.pathname === "/signup") setActiveTab("signup");
+    if (location.pathname === "/login" || location.pathname === "/auth") setActiveTab("login");
+  }, [location.pathname]);
 
   const validateInputs = (isSignUp: boolean) => {
     try { emailSchema.parse(email); } catch {
@@ -100,14 +109,19 @@ export default function Auth() {
     e.preventDefault();
     if (!validateInputs(true)) return;
     setIsLoading(true);
-    const { error } = await signUp(email, password, displayName.trim());
+    const { error, needsConfirmation } = await signUp(email, password, displayName.trim());
     setIsLoading(false);
     if (error) {
       let message = error.message;
       if (error.message.includes("already exists")) message = "An account with this email already exists. Please log in instead.";
       toast({ title: "Sign Up Failed", description: message, variant: "destructive" });
     } else {
-      toast({ title: "Account Created!", description: "Welcome to Apexium. Start analyzing charts now!" });
+      toast({
+        title: needsConfirmation ? "Check your email" : "Account Created!",
+        description: needsConfirmation
+          ? "Confirm your email address, then sign in to continue."
+          : "Welcome to Apexium. Start analyzing charts now!",
+      });
     }
   };
 
@@ -134,37 +148,6 @@ export default function Auth() {
           </span>
         </div>
 
-        {resetLink && (
-          <Card className="border-primary/40 bg-primary/5 shadow-xl mb-4">
-            <CardContent className="pt-4 pb-4 space-y-3">
-              <p className="text-sm font-semibold text-primary">Your password reset link is ready:</p>
-              <p className="text-xs text-muted-foreground">Copy the link below and open it in your browser, or click "Open" to go directly.</p>
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value={resetLink}
-                  className="text-xs font-mono bg-secondary/50"
-                />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => { navigator.clipboard.writeText(resetLink); toast({ title: "Copied!", description: "Reset link copied to clipboard." }); }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => window.open(resetLink, "_blank")}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">This link expires in 1 hour.</p>
-            </CardContent>
-          </Card>
-        )}
-
         <Card className="border-border/50 shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Welcome</CardTitle>
@@ -183,14 +166,14 @@ export default function Auth() {
                     <Label htmlFor="login-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="login-email" type="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
+                      <Input id="login-email" type="email" autoComplete="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="login-password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <Input id="login-password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
                       <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
                     </div>
                   </div>
@@ -211,21 +194,21 @@ export default function Auth() {
                     <Label htmlFor="display-name">Name</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="display-name" type="text" placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="pl-10" required />
+                      <Input id="display-name" type="text" autoComplete="name" placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="signup-email" type="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
+                      <Input id="signup-email" type="email" autoComplete="email" placeholder="trader@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="signup-password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <Input id="signup-password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10" required />
                       <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
                     </div>
                   </div>
@@ -233,7 +216,7 @@ export default function Auth() {
                     <Label htmlFor="confirm-password">Confirm Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="confirm-password" type={showConfirmPassword ? "text" : "password"} placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10 pr-10" required />
+                      <Input id="confirm-password" type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10 pr-10" required />
                       <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
                     </div>
                   </div>

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { TrendingUp, Lock, Loader2, CheckCircle, Eye, EyeOff } from "lucide-react";
 
 export default function ResetPassword() {
@@ -13,12 +13,25 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" || session) {
+        setHasRecoverySession(true);
+        setCheckingSession(false);
+      }
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasRecoverySession(Boolean(session));
+      setCheckingSession(false);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +47,8 @@ export default function ResetPassword() {
 
     setIsLoading(true);
     try {
-      await api.auth.resetPassword(token!, password);
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
       setIsSuccess(true);
       toast({ title: "Password Updated", description: "Your password has been successfully reset." });
       setTimeout(() => navigate("/auth"), 2000);
@@ -56,7 +70,11 @@ export default function ResetPassword() {
     </button>
   );
 
-  if (!token) {
+  if (checkingSession) {
+    return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!hasRecoverySession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md border-border/50 shadow-xl">
@@ -105,6 +123,7 @@ export default function ResetPassword() {
                     <Input
                       id="new-password"
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -121,6 +140,7 @@ export default function ResetPassword() {
                     <Input
                       id="confirm-new-password"
                       type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       placeholder="••••••••"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}

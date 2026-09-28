@@ -1,2 +1,3 @@
 - [Serverless deployment](serverless-deployment.md) — hosted API entrypoints must not start a listener during module import.
 - [Public npm lockfiles](public-npm-lockfiles.md) — package locks shared with external CI must not contain Replit package-firewall tarball URLs.
+- [Supabase authentication boundary](supabase-auth-boundary.md) — Supabase Auth owns accounts; app PostgreSQL stores feature data keyed by Supabase UUIDs.

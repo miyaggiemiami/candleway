@@ -9,7 +9,9 @@ export const users = pgTable("users", {
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  // Supabase Auth owns these UUIDs. The profile database may be separate from
+  // Supabase, so this intentionally has no foreign key to the legacy users table.
+  user_id: uuid("user_id").notNull().unique(),
   username: text("username"),
   display_name: text("display_name"),
   avatar_url: text("avatar_url"),
@@ -26,7 +28,7 @@ export const profiles = pgTable("profiles", {
 
 export const analyses = pgTable("analyses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull(),
   pair: text("pair").notNull(),
   timeframe: text("timeframe").notNull(),
   style: text("style").notNull(),
@@ -50,7 +52,7 @@ export const analyses = pgTable("analyses", {
 
 export const riskSettings = pgTable("risk_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull().unique(),
   risk_per_trade: numeric("risk_per_trade", { precision: 5, scale: 2 }).notNull().default("1.0"),
   max_trades_per_day: integer("max_trades_per_day").notNull().default(5),
   max_daily_loss: numeric("max_daily_loss", { precision: 5, scale: 2 }).notNull().default("5.0"),
@@ -66,7 +68,7 @@ export const riskSettings = pgTable("risk_settings", {
 
 export const trades = pgTable("trades", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull(),
   analysis_id: uuid("analysis_id").references(() => analyses.id, { onDelete: "set null" }),
   pair: text("pair").notNull(),
   direction: text("direction").notNull(),
@@ -87,14 +89,14 @@ export const trades = pgTable("trades", {
 
 export const riskConsent = pgTable("risk_consent", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull().unique(),
   consent_text: text("consent_text").notNull(),
   consented_at: timestamp("consented_at").notNull().defaultNow(),
 });
 
 export const metatraderSettings = pgTable("metatrader_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull().unique(),
   account_id: text("account_id").notNull().default(""),
   api_token: text("api_token").notNull().default(""),
   server_region: text("server_region").notNull().default("new-york"),
@@ -106,7 +108,7 @@ export const metatraderSettings = pgTable("metatrader_settings", {
 
 export const passwordResets = pgTable("password_resets", {
   id: uuid("id").primaryKey().defaultRandom(),
-  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  user_id: uuid("user_id").notNull(),
   token: text("token").notNull().unique(),
   expires_at: timestamp("expires_at").notNull(),
   used: boolean("used").notNull().default(false),

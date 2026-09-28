@@ -1,10 +1,10 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import authRouter from "./routes/auth";
 import profilesRouter from "./routes/profiles";
 import analysesRouter from "./routes/analyses";
 import tradesRouter from "./routes/trades";
@@ -19,6 +19,21 @@ app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLEAPI || process.env.GOOGLE_APIKEY || "";
+
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    auth: "supabase",
+    supabaseConfigured: Boolean(
+      (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) &&
+      (process.env.SUPABASE_PUBLISHABLE_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.VITE_SUPABASE_ANON_KEY)
+    ),
+    databaseConfigured: Boolean(process.env.DATABASE_URL),
+  });
+});
 
 function getGemini() {
   if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured. Add it in the Secrets tab.");
@@ -48,9 +63,6 @@ function isRateLimit(err: any): boolean {
   const msg = err?.message || "";
   return msg.includes("429") || msg.includes("503") || msg.includes("Service Unavailable") || msg.includes("high demand") || msg.includes("overloaded");
 }
-
-// ── Auth routes ───────────────────────────────────────────────────────────────
-app.use("/api/auth", authRouter);
 
 // ── Data routes ───────────────────────────────────────────────────────────────
 app.use("/api/profiles", profilesRouter);
@@ -290,8 +302,7 @@ app.use("/api", stripeRouter);
 
 // ── Static files (production) / Dev proxy ────────────────────────────────────
 const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
-const isServerless = Boolean(process.env.VERCEL);
-const isDev = process.env.NODE_ENV !== "production" && !isServerless;
+const isDev = process.env.NODE_ENV !== "production";
 
 if (isDev) {
   app.use(
@@ -302,9 +313,9 @@ if (isDev) {
       ws: true,
     })
   );
-} else if (!isServerless) {
-  // The long-running Node server serves the built SPA. Vercel serves the
-  // frontend from `dist` and imports this module only for the API function.
+} else {
+  // The API service can also serve the built SPA when deployed as one
+  // long-running Node process. Static hosts can deploy `dist` separately.
   const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
   app.use(express.static(distPath));
   app.get(/(.*)/, (req, res, next) => {
@@ -313,16 +324,13 @@ if (isDev) {
   });
 }
 
-// Vercel imports this module as a serverless function. Starting a listener
-// during import would make that deployment fail with a port error.
-if (!isServerless) {
-  const PORT = parseInt(process.env.PORT || "5000", 10);
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`CandleWay server running on port ${PORT}`);
-    if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
-    console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
-    console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
-  });
-}
+const PORT = parseInt(process.env.PORT || "5000", 10);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`CandleWay server running on port ${PORT}`);
+  if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
+  console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
+  console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
+  console.log(`Supabase Auth: ${(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) ? "✓ configured" : "✗ MISSING"}`);
+});
 
 export default app;
