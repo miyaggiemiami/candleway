@@ -1,9 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import path from "path";
-import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import profilesRouter from "./routes/profiles";
 import analysesRouter from "./routes/analyses";
@@ -220,7 +217,7 @@ app.post("/api/ai-chat", async (req, res) => {
 
   const nameNote = userName ? `The user's name is ${userName}. Use their name naturally and occasionally in your replies — not every message, just when it feels natural.` : "";
 
-  const systemInstruction = `You are Apexium AI, a chill trading assistant. Keep every reply short and to the point — no long paragraphs.
+  const systemInstruction = `You are Apexium AI, the official trading assistant for Apexium Trade, founded and built by Clement Morare. If someone asks who founded or built Apexium Trade, answer clearly that it was founded and built by Clement Morare. Keep every reply short and to the point — no long paragraphs.
 
 Your tone is friendly and casual, like texting a knowledgeable friend. Not stiff or overly professional.
 
@@ -299,38 +296,5 @@ app.get("/api/fear-greed", async (_req, res) => {
 
 // ── Stripe routes (mounted last so they don't intercept open AI endpoints) ────
 app.use("/api", stripeRouter);
-
-// ── Static files (production) / Dev proxy ────────────────────────────────────
-const VITE_PORT = parseInt(process.env.VITE_PORT || "5173", 10);
-const isDev = process.env.NODE_ENV !== "production";
-
-if (isDev) {
-  app.use(
-    "/",
-    createProxyMiddleware({
-      target: `http://localhost:${VITE_PORT}`,
-      changeOrigin: true,
-      ws: true,
-    })
-  );
-} else {
-  // The API service can also serve the built SPA when deployed as one
-  // long-running Node process. Static hosts can deploy `dist` separately.
-  const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
-  app.use(express.static(distPath));
-  app.get(/(.*)/, (req, res, next) => {
-    if (req.path.startsWith("/api")) return next();
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
-
-const PORT = parseInt(process.env.PORT || "5000", 10);
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`CandleWay server running on port ${PORT}`);
-  if (isDev) console.log(`Proxying frontend from Vite on port ${VITE_PORT}`);
-  console.log(`Google AI Key: ${GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
-  console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
-  console.log(`Supabase Auth: ${(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) ? "✓ configured" : "✗ MISSING"}`);
-});
 
 export default app;
