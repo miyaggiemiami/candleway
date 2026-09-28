@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createChart, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type CandlestickData } from "lightweight-charts";
+import { createChart, CandlestickSeries, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type CandlestickData } from "lightweight-charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,7 +122,7 @@ export function LiveChartPanel() {
       height: 320,
     });
 
-    const series = chart.addCandlestickSeries({
+    const series = chart.addSeries(CandlestickSeries, {
       upColor:          "#22c55e",
       downColor:        "#ef4444",
       borderUpColor:    "#22c55e",

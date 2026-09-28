@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, RefreshCw } from "lucide-react";
+import { getApiUrl } from "@/lib/api";
 
 interface FGData {
   value: number;
@@ -99,7 +100,7 @@ export function FearGreedMeter() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/fear-greed");
+      const r = await fetch(getApiUrl("/api/fear-greed"));
       if (!r.ok) throw new Error("fetch failed");
       const d = await r.json();
       if (d.error) throw new Error(d.error);

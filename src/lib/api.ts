@@ -2,6 +2,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
+export function getApiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
+
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const headers: HeadersInit = {
@@ -12,7 +16,7 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
     ...(options.headers || {}),
   };
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(getApiUrl(path), { ...options, headers });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
