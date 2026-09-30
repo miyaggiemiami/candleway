@@ -1,0 +1,28 @@
+Act as a Principal Full-Stack Software Engineer and Algorithmic Trading Expert. Your task is to write the complete code base and system architecture for a commercial multi-user trading platform named "Apexium AI Chart Analyzer". 
+
+This platform must be completely optimized for a premium R70/month subscription model. It must completely omit third-party paid tools like MetaApi and network tunneling tools like Ngrok. Instead, it must utilize a secure "Cloud Database Queue Engine" where the local desktop clients pull pending orders from the cloud server.
+
+Generate production-ready code blocks for the following three core application layers:
+
+1. THE ADVANCED VISION AI PROMPT (Replit Server Brain)
+Write a system prompt for the OpenAI gpt-4o vision model. It must accept a chart screenshot and return data strictly in a parsed JSON format. The schema must require:
+- symbol (inferred from chart)
+- signal_bias (STRONG_BUY / BUY / NEUTRAL / SELL / STRONG_SELL)
+- market_context (1-sentence breakdown)
+- entry_zone_low, entry_zone_high, stop_loss, take_profit_1, take_profit_2
+- invalidations_rationale
+Enforce strict rules: Stop loss must be placed past structural invalidation points, and take profit 1 must secure at least a 1:1.5 Risk-to-Reward ratio.
+
+2. THE CENTRAL FLASK SERVER WITH DATABASE QUEUE (Replit Backend)
+Write a Python Flask application layout. Implement two critical API routing endpoints:
+- POST `/api/execute-trade`: Accepts the verified vision JSON output from the phone app and writes it into a "trades" database table (e.g., SQLite or PostgreSQL) with columns: [id, license_key, symbol, action, volume, sl, tp1, status="pending"].
+- GET `/api/get-pending-trade`: Accepts a URL query parameter '?key=LICENSE_KEY'. It scans the database for the oldest entry matching that license key where status == "pending". If found, it returns the trade details as JSON and instantly updates that database row status to "processing".
+
+3. THE DOWNLOADABLE DESKTOP CLIENT APP (The MT5 Bridge Script)
+Write a lightweight Python script designed to run locally on the customer's Windows machine. It must:
+- Initialize the native, free 'MetaTrader5' Python library.
+- Run a continuous 'while True' polling loop every 2 seconds that requests the server's GET `/api/get-pending-trade` endpoint using the user's hardcoded license key string.
+- If a pending trade matrix is returned, construct an official mt5.order_send() market execution block, hardcoding the exact Stop Loss and Take Profit 1 targets directly to the broker order for ironclad risk protection.
+- Include a separate monitoring background thread that fetches open positions via mt5.positions_get(magic=234000) and automatically modifies the stop loss to break-even + 2 pips the second a trade runs 30 pips into profit.
+
+Ensure all scripts include proper error handling, clear console log flags, and minimal dependencies to easily compile the desktop script into a standalone .exe file via PyInstaller.
