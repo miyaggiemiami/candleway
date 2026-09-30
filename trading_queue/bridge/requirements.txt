@@ -1,0 +1,4 @@
+requests>=2.32,<3
+python-dotenv>=1.0,<2
+MetaTrader5>=5.0.45; platform_system == "Windows"
+pyinstaller>=6.0,<7; platform_system == "Windows"
