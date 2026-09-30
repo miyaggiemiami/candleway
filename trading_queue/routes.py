@@ -67,12 +67,14 @@ def validate_trade(payload: object) -> dict:
     if symbol.upper() in {"UNKNOWN", "N/A"}:
         raise ValueError("a chart with an unidentified symbol cannot be queued")
 
-    context = payload.get("market_context")
-    rationale = payload.get("invalidations_rationale")
-    if not isinstance(context, str) or not context.strip() or len(context) > 500:
-        raise ValueError("market_context is required and must be at most 500 characters")
-    if not isinstance(rationale, str) or not rationale.strip() or len(rationale) > 1000:
-        raise ValueError("invalidations_rationale is required and must be at most 1000 characters")
+    # The vision parser returns only the documented price schema. These
+    # optional operator annotations remain accepted for richer app clients.
+    context = payload.get("market_context", "")
+    rationale = payload.get("invalidations_rationale", "")
+    if not isinstance(context, str) or len(context) > 500:
+        raise ValueError("market_context must be a string of at most 500 characters")
+    if not isinstance(rationale, str) or len(rationale) > 1000:
+        raise ValueError("invalidations_rationale must be a string of at most 1000 characters")
 
     volume = parse_decimal(payload, "volume")
     low = parse_decimal(payload, "entry_zone_low")

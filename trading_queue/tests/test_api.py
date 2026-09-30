@@ -3,6 +3,7 @@ import unittest
 from trading_queue import create_app, db
 from trading_queue.models import License, QueuedTrade
 from trading_queue.security import hash_secret
+from trading_queue.vision_prompt import VISION_RESPONSE_SCHEMA
 
 
 class QueueApiTests(unittest.TestCase):
@@ -72,6 +73,25 @@ class QueueApiTests(unittest.TestCase):
         )
         self.assertEqual(acknowledged.status_code, 200)
         self.assertEqual(db.session.get(QueuedTrade, trade_id).status, "filled")
+
+    def test_vision_payload_shape_is_strict_and_queue_accepts_vision_output(self):
+        expected = {
+            "symbol",
+            "signal_bias",
+            "entry_zone_low",
+            "entry_zone_high",
+            "stop_loss",
+            "take_profit_1",
+            "take_profit_2",
+        }
+        self.assertEqual(set(VISION_RESPONSE_SCHEMA["properties"]), expected)
+        self.assertEqual(set(VISION_RESPONSE_SCHEMA["required"]), expected)
+
+        payload = self.valid_payload()
+        payload.pop("market_context")
+        payload.pop("invalidations_rationale")
+        response = self.client.post("/api/execute-trade", json=payload, headers=self.headers)
+        self.assertEqual(response.status_code, 201)
 
     def test_risk_reward_below_minimum_is_rejected(self):
         payload = self.valid_payload()
