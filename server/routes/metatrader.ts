@@ -1,4 +1,7 @@
 import { Router } from "express";
+import { spawn } from "node:child_process";
+import { createDecipheriv, createCipheriv, randomBytes } from "node:crypto";
+import path from "node:path";
 import { db } from "../db/index";
 import { metatraderSettings, trades } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
@@ -8,125 +11,220 @@ const router = Router();
 
 router.use(requireAuth);
 
+type Mt5Action = "get-account-info" | "get-positions" | "execute-trade" | "close-position";
+type Mt5Result = Record<string, unknown>;
+
+let queuedRequest = Promise.resolve();
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getCredentialsEncryptionKey() {
+  const value = process.env.MT5_CREDENTIALS_ENCRYPTION_KEY;
+  if (!value || !/^[\da-f]{64}$/i.test(value)) {
+    throw new Error("MT5_CREDENTIALS_ENCRYPTION_KEY must be set to a 64-character hexadecimal key.");
+  }
+  return Buffer.from(value, "hex");
+}
+
+function encryptPassword(password: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", getCredentialsEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(password, "utf8"), cipher.final()]);
+  return `v1:${iv.toString("base64")}:${cipher.getAuthTag().toString("base64")}:${encrypted.toString("base64")}`;
+}
+
+function decryptPassword(value: string) {
+  const [version, iv, tag, encrypted] = value.split(":");
+  if (version !== "v1" || !iv || !tag || !encrypted) {
+    throw new Error("Saved MT5 password has an unsupported encrypted format.");
+  }
+  const decipher = createDecipheriv("aes-256-gcm", getCredentialsEncryptionKey(), Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encrypted, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function serializeMt5Request(payload: Record<string, unknown>): Promise<Mt5Result> {
+  const request = queuedRequest.then(() => new Promise<Mt5Result>((resolve, reject) => {
+    const python = process.env.MT5_PYTHON_PATH || "python";
+    const scriptPath = path.resolve(process.cwd(), "scripts", "metatrader_connector.py");
+    const child = spawn(python, [scriptPath], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    child.once("error", (error) => reject(new Error(`Could not start the local MT5 connector: ${error.message}`)));
+    child.once("close", (code) => {
+      let result: Mt5Result;
+      try {
+        result = JSON.parse(stdout);
+      } catch {
+        reject(new Error(stderr.trim() || `The MT5 connector returned invalid output (exit code ${code}).`));
+        return;
+      }
+      if (code !== 0 || result.error) {
+        const connectorError = typeof result.error === "string" ? result.error : undefined;
+        reject(new Error(connectorError || stderr.trim() || `MT5 connector exited with code ${code}.`));
+        return;
+      }
+      resolve(result);
+    });
+    child.stdin.end(JSON.stringify(payload));
+  }));
+  queuedRequest = request.then(() => undefined, () => undefined);
+  return request;
+}
+
+async function loadCredentials(userId: string) {
+  const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, userId)).limit(1);
+  if (!settings?.mt5_login || !settings.mt5_server || !settings.mt5_password_encrypted) {
+    throw new Error("MT5 is not configured. Add your account number, trading password, and broker server in Settings.");
+  }
+  return {
+    settings,
+    login: settings.mt5_login,
+    password: decryptPassword(settings.mt5_password_encrypted),
+    server: settings.mt5_server,
+  };
+}
+
 router.get("/settings", async (req: AuthenticatedRequest, res) => {
   try {
     const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
-    return res.json(settings || null);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.json(settings ? {
+      login: settings.mt5_login,
+      server: settings.mt5_server,
+      has_password: Boolean(settings.mt5_password_encrypted),
+      is_connected: settings.is_connected,
+    } : null);
+  } catch (err: unknown) {
+    return res.status(500).json({ error: getErrorMessage(err, "Could not load MT5 settings.") });
   }
 });
 
 router.post("/settings", async (req: AuthenticatedRequest, res) => {
   try {
-    const { account_id, api_token, server_region, platform } = req.body;
-    const [existing] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
-
-    let settings;
-    if (existing) {
-      [settings] = await db.update(metatraderSettings)
-        .set({ account_id, api_token, server_region, platform, updated_at: new Date() })
-        .where(eq(metatraderSettings.user_id, req.userId!))
-        .returning();
-    } else {
-      [settings] = await db.insert(metatraderSettings)
-        .values({ user_id: req.userId!, account_id, api_token, server_region, platform })
-        .returning();
+    const { login, password, server, is_connected } = req.body;
+    if (login !== undefined && (typeof login !== "string" || !/^\d+$/.test(login.trim()))) {
+      return res.status(400).json({ error: "MT5 account number must contain digits only." });
+    }
+    if (server !== undefined && (typeof server !== "string" || !server.trim())) {
+      return res.status(400).json({ error: "Enter the exact broker server name." });
+    }
+    if (password !== undefined && typeof password !== "string") {
+      return res.status(400).json({ error: "MT5 password must be text." });
+    }
+    if (is_connected !== undefined && typeof is_connected !== "boolean") {
+      return res.status(400).json({ error: "Connection status must be a boolean." });
     }
 
-    return res.json(settings);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const [existing] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
+    const credentialsChanged = login !== undefined || server !== undefined || Boolean(password);
+    const changes: Partial<typeof metatraderSettings.$inferInsert> = {
+      ...(login !== undefined ? { mt5_login: login.trim() } : {}),
+      ...(server !== undefined ? { mt5_server: server.trim() } : {}),
+      ...(password ? { mt5_password_encrypted: encryptPassword(password) } : {}),
+      ...(is_connected !== undefined
+        ? { is_connected }
+        : credentialsChanged
+          ? { is_connected: false }
+          : {}),
+      updated_at: new Date(),
+    };
+    if (existing) {
+      await db.update(metatraderSettings)
+        .set(changes)
+        .where(eq(metatraderSettings.user_id, req.userId!))
+    } else {
+      await db.insert(metatraderSettings)
+        .values({
+          user_id: req.userId!,
+          mt5_login: login?.trim() || "",
+          mt5_server: server?.trim() || "",
+          mt5_password_encrypted: password ? encryptPassword(password) : "",
+          ...changes,
+        });
+    }
+
+    const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
+    return res.json({
+      login: settings.mt5_login,
+      server: settings.mt5_server,
+      has_password: Boolean(settings.mt5_password_encrypted),
+      is_connected: settings.is_connected,
+    });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: getErrorMessage(err, "Could not save MT5 settings.") });
   }
 });
 
 router.post("/trade", async (req: AuthenticatedRequest, res) => {
+  const action = req.body?.action as Mt5Action | undefined;
   try {
-    const { action, symbol, volume, stopLoss, takeProfit, direction, tradeId } = req.body;
-
-    const [mtSettings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
-
-    const metaapiToken = mtSettings?.api_token || process.env.METAAPI_TOKEN;
-    const metaapiAccountId = mtSettings?.account_id || process.env.METAAPI_ACCOUNT_ID;
-    const serverRegion = mtSettings?.server_region || "new-york";
-
-    if (!metaapiToken || !metaapiAccountId) {
-      return res.json({ error: "MetaTrader not configured. Add your credentials in Settings." });
+    const allowedActions: Mt5Action[] = ["get-account-info", "get-positions", "execute-trade", "close-position"];
+    if (!action || !allowedActions.includes(action)) {
+      return res.status(400).json({ error: "Invalid MetaTrader action." });
     }
 
-    const baseUrl = `https://mt-client-api-v1.${serverRegion}.agiliumtrade.ai/users/current/accounts/${metaapiAccountId}`;
-
-    if (action === "get-account-info") {
-      const r = await fetch(`${baseUrl}/account-information`, {
-        headers: { "auth-token": metaapiToken, Accept: "application/json" },
-      });
-      const data = await r.json();
-      if (!r.ok) return res.json({ error: data.message || "Failed to get account info" });
-      return res.json({ success: true, account: data });
-    }
+    const { settings, ...credentials } = await loadCredentials(req.userId!);
+    const connectorPayload: Record<string, unknown> = { action, ...credentials };
 
     if (action === "execute-trade") {
-      const normalizedSymbol = symbol.replace("/", "");
-      const actionType = direction === "BUY" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL";
-      const tradePayload: Record<string, unknown> = { actionType, symbol: normalizedSymbol, volume: volume || 0.01 };
-      if (stopLoss && stopLoss > 0) tradePayload.stopLoss = stopLoss;
-      if (takeProfit && takeProfit > 0) tradePayload.takeProfit = takeProfit;
-
-      const r = await fetch(`${baseUrl}/trade`, {
-        method: "POST",
-        headers: { "auth-token": metaapiToken, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(tradePayload),
-      });
-      const data = await r.json();
-
-      if (!r.ok || (data.stringCode && data.stringCode !== "TRADE_RETCODE_DONE")) {
-        return res.status(400).json({ error: data.message || data.stringCode || "Trade execution failed", details: data });
+      const { symbol, volume, stopLoss, takeProfit, direction } = req.body;
+      if (typeof symbol !== "string" || !symbol.trim() || !["BUY", "SELL"].includes(direction) ||
+          typeof volume !== "number" || !Number.isFinite(volume) || volume <= 0) {
+        return res.status(400).json({ error: "Provide a symbol, BUY or SELL direction, and a positive trade volume." });
       }
+      Object.assign(connectorPayload, { symbol, volume, stopLoss, takeProfit, direction });
+    }
+    if (action === "close-position") {
+      const positionId = req.body?.tradeId;
+      if (typeof positionId !== "string" || !/^\d+$/.test(positionId)) {
+        return res.status(400).json({ error: "Provide a valid position ticket to close." });
+      }
+      connectorPayload.positionId = positionId;
+    }
 
-      const slPrice = stopLoss || 0;
-      const tpPrice = takeProfit || 0;
-      const entryPrice = data.orderId ? 0 : (slPrice + tpPrice) / 2;
+    const result = await serializeMt5Request(connectorPayload);
+    await db.update(metatraderSettings)
+      .set({ is_connected: true, updated_at: new Date() })
+      .where(eq(metatraderSettings.user_id, req.userId!));
 
+    if (action === "execute-trade") {
       await db.insert(trades).values({
         user_id: req.userId!,
-        pair: symbol,
-        direction,
-        entry_price: String(entryPrice),
-        stop_loss: String(slPrice),
-        take_profit: String(tpPrice),
-        lot_size: String(volume || 0.01),
+        pair: req.body.symbol,
+        direction: req.body.direction,
+        entry_price: String(result.price),
+        stop_loss: String(req.body.stopLoss || 0),
+        take_profit: String(req.body.takeProfit || 0),
+        lot_size: String(req.body.volume),
         status: "open",
         outcome: "pending",
         pnl: "0",
         execution_mode: "live",
-        notes: `MetaApi order: ${data.orderId || "market"}`,
+        notes: `MT5 order: ${result.orderId || "market"}`,
       });
-
-      return res.json({ success: true, orderId: data.orderId, stringCode: data.stringCode, message: data.message });
+      return res.json(result);
     }
 
-    if (action === "get-positions") {
-      const r = await fetch(`${baseUrl}/positions`, {
-        headers: { "auth-token": metaapiToken, Accept: "application/json" },
-      });
-      const data = await r.json();
-      return res.json({ success: true, positions: data });
-    }
-
-    if (action === "close-position") {
-      const r = await fetch(`${baseUrl}/trade`, {
-        method: "POST",
-        headers: { "auth-token": metaapiToken, "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ actionType: "POSITION_CLOSE_ID", positionId: tradeId }),
-      });
-      const data = await r.json();
-      return res.json({ success: true, ...data });
-    }
-
-    return res.status(400).json({ error: "Invalid action" });
-  } catch (err: any) {
+    return res.json(result);
+  } catch (err: unknown) {
     console.error("MetaTrader route error:", err);
-    return res.status(500).json({ error: err.message || "Internal error" });
+    if (action) {
+      await db.update(metatraderSettings)
+        .set({ is_connected: false, updated_at: new Date() })
+        .where(eq(metatraderSettings.user_id, req.userId!))
+        .catch((updateError) => console.error("Could not update MT5 connection state:", updateError));
+    }
+    return res.status(500).json({ error: getErrorMessage(err, "Internal error") });
   }
 });
 

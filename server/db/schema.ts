@@ -97,6 +97,9 @@ export const riskConsent = pgTable("risk_consent", {
 export const metatraderSettings = pgTable("metatrader_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
   user_id: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  mt5_login: text("mt5_login").notNull().default(""),
+  mt5_password_encrypted: text("mt5_password_encrypted").notNull().default(""),
+  mt5_server: text("mt5_server").notNull().default(""),
   account_id: text("account_id").notNull().default(""),
   api_token: text("api_token").notNull().default(""),
   server_region: text("server_region").notNull().default("new-york"),

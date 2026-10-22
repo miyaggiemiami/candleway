@@ -19,13 +19,14 @@ async function callMetaTraderAPI(body: object) {
 }
 
 export interface MetaTraderConfig {
-  id: string;
-  user_id: string;
-  account_id: string;
-  api_token: string;
-  server_region: string;
+  login: string;
+  server: string;
+  has_password: boolean;
   is_connected: boolean;
-  platform: string;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Request failed";
 }
 
 export function useMetaTraderSettings() {
@@ -39,44 +40,50 @@ export function useMetaTraderSettings() {
     if (!user) { setLoading(false); return; }
     try {
       const data = await api.metatrader.getSettings();
-      setSettings(data as unknown as MetaTraderConfig);
+      setSettings(data as MetaTraderConfig | null);
     } catch (err) {
       console.error('Error fetching MT settings:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
 
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
-  const saveSettings = async (config: { account_id: string; api_token: string; server_region: string; platform: string }) => {
-    if (!user) return;
+  const saveSettings = async (config: { login: string; password?: string; server: string }) => {
+    if (!user) {
+      toast({ title: 'Save Failed', description: 'Sign in before saving MT5 credentials.', variant: 'destructive' });
+      return false;
+    }
     setSaving(true);
     try {
       await api.metatrader.saveSettings(config);
       await fetchSettings();
       toast({ title: 'Settings Saved', description: 'MetaTrader configuration updated.' });
-    } catch (err: any) {
-      toast({ title: 'Save Failed', description: err.message, variant: 'destructive' });
+      return true;
+    } catch (err: unknown) {
+      toast({ title: 'Save Failed', description: getErrorMessage(err), variant: 'destructive' });
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const testConnection = async () => {
-    if (!user) return false;
+    if (!user) {
+      toast({ title: 'Connection Failed', description: 'Sign in before testing the MT5 connection.', variant: 'destructive' });
+      return false;
+    }
     try {
       const data = await callMetaTraderAPI({ action: 'get-account-info' });
       if (data?.error) throw new Error(data.error);
 
-      await api.metatrader.saveSettings({ ...settings, is_connected: true } as any);
       await fetchSettings();
-
-      toast({ title: 'Connection Successful', description: `Connected to ${data.account?.platform || 'MetaTrader'} — Balance: $${data.account?.balance?.toFixed(2)}` });
+      toast({ title: 'Connection Successful', description: `Connected to MetaTrader 5 — Balance: $${data.account?.balance?.toFixed(2)}` });
       return true;
-    } catch (err: any) {
-      await api.metatrader.saveSettings({ ...settings, is_connected: false } as any).catch(() => {});
+    } catch (err: unknown) {
       await fetchSettings();
-      toast({ title: 'Connection Failed', description: err.message, variant: 'destructive' });
+      toast({ title: 'Connection Failed', description: getErrorMessage(err), variant: 'destructive' });
       return false;
     }
   };

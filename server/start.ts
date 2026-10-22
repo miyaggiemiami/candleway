@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createProxyMiddleware } from "http-proxy-middleware";
 import express from "express";
 import path from "path";

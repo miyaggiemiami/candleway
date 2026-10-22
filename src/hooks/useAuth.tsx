@@ -126,8 +126,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       if (error) throw error;
       return { error: null };
-    } catch (err: any) {
-      return { error: new Error(err.message || "Sign up failed") };
+    } catch (err: unknown) {
+      return { error: new Error(err instanceof Error ? err.message : "Sign up failed") };
     }
   };
 
@@ -139,8 +139,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       if (error) throw error;
       return { error: null };
-    } catch (err: any) {
-      return { error: new Error(err.message || "Sign in failed") };
+    } catch (err: unknown) {
+      if (err instanceof TypeError && /fetch/i.test(err.message)) {
+        return {
+          error: new Error(
+            "Could not reach Supabase. Check that VITE_SUPABASE_URL and its matching publishable key are correct, then restart the app."
+          ),
+        };
+      }
+      if (err instanceof Error && err.message.includes("Invalid API key")) {
+        return {
+          error: new Error(
+            "The Supabase publishable key is invalid or belongs to a different project. Copy the key for this project from Supabase Settings → API Keys."
+          ),
+        };
+      }
+      return { error: new Error(err instanceof Error ? err.message : "Sign in failed") };
     }
   };
 

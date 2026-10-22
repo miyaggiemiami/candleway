@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   User, 
   Crown, 
@@ -22,9 +21,15 @@ import {
   Wifi,
   WifiOff,
   Loader2,
-  Monitor
+  Monitor,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Server,
+  UserRound,
+  ShieldCheck
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMetaTraderSettings } from "@/hooks/useMetaTraderSettings";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -36,35 +41,46 @@ export default function Settings() {
   const [name, setName] = useState("Trader");
   
   const { settings: mtSettings, loading: mtLoading, saving: mtSaving, saveSettings: saveMtSettings, testConnection } = useMetaTraderSettings();
-  const [mtAccountId, setMtAccountId] = useState('');
-  const [mtApiToken, setMtApiToken] = useState('');
-  const [mtRegion, setMtRegion] = useState('new-york');
-  const [mtPlatform, setMtPlatform] = useState('mt5');
+  const [mtLogin, setMtLogin] = useState("");
+  const [mtPassword, setMtPassword] = useState("");
+  const [mtServer, setMtServer] = useState("");
+  const [showMtPassword, setShowMtPassword] = useState(false);
   const [mtTesting, setMtTesting] = useState(false);
 
-  // Populate fields when settings load
-  const [initialized, setInitialized] = useState(false);
-  if (mtSettings && !initialized) {
-    setMtAccountId(mtSettings.account_id);
-    setMtApiToken(mtSettings.api_token);
-    setMtRegion(mtSettings.server_region);
-    setMtPlatform(mtSettings.platform);
-    setInitialized(true);
-  }
+  useEffect(() => {
+    if (!mtSettings) return;
+    setMtLogin(mtSettings.login);
+    setMtServer(mtSettings.server);
+  }, [mtSettings]);
 
   const handleMtSave = async () => {
-    await saveMtSettings({
-      account_id: mtAccountId,
-      api_token: mtApiToken,
-      server_region: mtRegion,
-      platform: mtPlatform,
+    const saved = await saveMtSettings({
+      login: mtLogin,
+      password: mtPassword,
+      server: mtServer,
     });
+    if (saved) setMtPassword("");
   };
 
   const handleMtTest = async () => {
     setMtTesting(true);
-    await testConnection();
-    setMtTesting(false);
+    try {
+      const credentialsChanged = mtLogin !== (mtSettings?.login || "") ||
+        mtServer !== (mtSettings?.server || "") ||
+        Boolean(mtPassword);
+      if (credentialsChanged) {
+        const saved = await saveMtSettings({
+          login: mtLogin,
+          password: mtPassword,
+          server: mtServer,
+        });
+        if (!saved) return;
+        setMtPassword("");
+      }
+      await testConnection();
+    } finally {
+      setMtTesting(false);
+    }
   };
 
   return (
@@ -178,10 +194,12 @@ export default function Settings() {
         </Card>
 
         {/* MetaTrader Connection */}
-        <Card className="glass-card mb-6 border-primary/30">
+        <Card className="mt5-credentials-card mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Monitor className="h-5 w-5 text-primary" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/10">
+                <Monitor className="h-5 w-5 text-primary" />
+              </div>
               MetaTrader Connection
               {mtSettings?.is_connected ? (
                 <Badge variant="outline" className="ml-auto text-xs border-emerald-500/50 text-emerald-400">
@@ -193,67 +211,97 @@ export default function Settings() {
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription>Connect your MetaTrader account via MetaApi for live trading</CardDescription>
+            <CardDescription>
+              Connect your MT5 trading account directly. Credentials are encrypted before they are stored.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="mt-account-id">MetaApi Account ID</Label>
-              <Input
-                id="mt-account-id"
-                value={mtAccountId}
-                onChange={(e) => setMtAccountId(e.target.value)}
-                placeholder="e.g. a1b2c3d4-e5f6-..."
-                className="glass-card font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">Find this in your MetaApi dashboard under Accounts</p>
+          <CardContent>
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/15 bg-primary/[0.06] p-4">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Your password is encrypted on the server and never sent back to this page. Leave it blank to keep the saved password.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="mt-api-token">MetaApi API Token</Label>
-              <Input
-                id="mt-api-token"
-                type="password"
-                value={mtApiToken}
-                onChange={(e) => setMtApiToken(e.target.value)}
-                placeholder="Your MetaApi token"
-                className="glass-card font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">Generate at metaapi.cloud → API Access</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Platform</Label>
-                <Select value={mtPlatform} onValueChange={setMtPlatform}>
-                  <SelectTrigger className="glass-card">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mt5">MetaTrader 5</SelectItem>
-                    <SelectItem value="mt4">MetaTrader 4</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="mt-login" className="text-sm font-medium">MT5 account number</Label>
+                <div className="relative">
+                  <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="mt-login"
+                    inputMode="numeric"
+                    autoComplete="username"
+                    value={mtLogin}
+                    onChange={(e) => setMtLogin(e.target.value)}
+                    placeholder="e.g. 12345678"
+                    className="mt5-credential-input pl-10 font-mono"
+                    disabled={mtLoading}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">The numeric login provided by your broker</p>
               </div>
               <div className="space-y-2">
-                <Label>Server Region</Label>
-                <Select value={mtRegion} onValueChange={setMtRegion}>
-                  <SelectTrigger className="glass-card">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new-york">New York</SelectItem>
-                    <SelectItem value="london">London</SelectItem>
-                    <SelectItem value="singapore">Singapore</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="mt-server" className="text-sm font-medium">Broker server</Label>
+                <div className="relative">
+                  <Server className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="mt-server"
+                    autoComplete="off"
+                    value={mtServer}
+                    onChange={(e) => setMtServer(e.target.value)}
+                    placeholder="e.g. BrokerName-Demo"
+                    className="mt5-credential-input pl-10"
+                    disabled={mtLoading}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Use the exact server name shown in MT5</p>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="mt-password" className="text-sm font-medium">MT5 trading password</Label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="mt-password"
+                    type={showMtPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={mtPassword}
+                    onChange={(e) => setMtPassword(e.target.value)}
+                    placeholder={mtSettings?.has_password ? "Saved securely — enter a new password to replace it" : "Enter your MT5 trading password"}
+                    className="mt5-credential-input pr-12 pl-10"
+                    disabled={mtLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMtPassword((visible) => !visible)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={showMtPassword ? "Hide MT5 password" : "Show MT5 password"}
+                    aria-pressed={showMtPassword}
+                  >
+                    {showMtPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">Use your trading password, not your investor/read-only password</p>
               </div>
             </div>
-            <div className="flex gap-3">
-              <Button onClick={handleMtSave} disabled={mtSaving || !mtAccountId || !mtApiToken} className="flex-1">
-                {mtSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Credentials
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button
+                onClick={handleMtSave}
+                disabled={mtLoading || mtSaving || !/^\d+$/.test(mtLogin) || !mtServer.trim() || (!mtPassword && !mtSettings?.has_password)}
+                className="h-11 flex-1 shadow-[0_8px_24px_-10px_hsl(var(--primary)/0.65)]"
+              >
+                {mtSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                Save MT5 Credentials
               </Button>
-              <Button variant="outline" onClick={handleMtTest} disabled={mtTesting || !mtAccountId || !mtApiToken}>
-                {mtTesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="h-4 w-4 mr-2" />}
-                Test
+              <Button
+                variant="outline"
+                className="h-11 border-border/70 bg-background/40 px-6"
+                onClick={handleMtTest}
+                disabled={mtTesting || mtSaving || (!mtPassword && !mtSettings?.has_password) || !/^\d+$/.test(mtLogin) || !mtServer.trim()}
+              >
+                {mtTesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
+                Test connection
               </Button>
             </div>
           </CardContent>

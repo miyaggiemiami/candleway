@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { createChart, CandlestickSeries, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type CandlestickData } from "lightweight-charts";
+import { useEffect, useRef, useState } from "react";
+import { createChart, CandlestickSeries, ColorType, CrosshairMode, type IChartApi, type ISeriesApi, type CandlestickData, type UTCTimestamp } from "lightweight-charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  TrendingUp, TrendingDown, Wifi, WifiOff, RefreshCw,
-  Settings, ChevronDown, CheckCircle2, XCircle, Loader2,
+  TrendingUp, TrendingDown, Wifi, WifiOff, ChevronDown, CheckCircle2, XCircle, Loader2,
   Activity,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMetaTrader } from "@/hooks/useMetaTrader";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ interface TradeResult {
   symbol: string;
   volume: number;
   message: string;
-  deal_id?: number;
+  deal_id?: string;
   price_filled?: number;
   timestamp: Date;
 }
@@ -34,7 +34,7 @@ function generateCandles(base: number, spread: number, count: number, startTs: n
   const candles: CandlestickData[] = [];
   let price = base;
   for (let i = 0; i < count; i++) {
-    const time = (startTs + i * intervalSec) as any;
+    const time = (startTs + i * intervalSec) as UTCTimestamp;
     const change = (Math.random() - 0.49) * spread;
     const open = price;
     price += change;
@@ -75,6 +75,7 @@ function buildCandles(symbol: Symbol, tf: TF): CandlestickData[] {
 
 export function LiveChartPanel() {
   const { toast } = useToast();
+  const { connected, loading: connectionLoading, getAccountInfo, executeLiveTrade } = useMetaTrader();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -86,11 +87,12 @@ export function LiveChartPanel() {
   const [priceChange, setPriceChange] = useState<number>(0);
 
   const [lotSize, setLotSize] = useState("0.01");
-  const [bridgeUrl, setBridgeUrl] = useState(() => localStorage.getItem("mt5_bridge_url") || "http://localhost:8000");
-  const [showBridgeSettings, setShowBridgeSettings] = useState(false);
-  const [bridgeStatus, setBridgeStatus] = useState<"unknown" | "online" | "offline">("unknown");
   const [executing, setExecuting] = useState<"BUY" | "SELL" | null>(null);
   const [lastResult, setLastResult] = useState<TradeResult | null>(null);
+
+  useEffect(() => {
+    void getAccountInfo();
+  }, [getAccountInfo]);
 
   // ── Chart init ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -178,26 +180,6 @@ export function LiveChartPanel() {
     return () => clearInterval(interval);
   }, [symbol, candles.length]);
 
-  // ── Bridge health check ─────────────────────────────────────────────────────
-  const checkBridge = useCallback(async () => {
-    try {
-      const r = await fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(3000) });
-      setBridgeStatus(r.ok ? "online" : "offline");
-    } catch {
-      setBridgeStatus("offline");
-    }
-  }, [bridgeUrl]);
-
-  useEffect(() => { checkBridge(); }, [checkBridge]);
-
-  const saveBridgeUrl = (url: string) => {
-    const clean = url.replace(/\/$/, "");
-    setBridgeUrl(clean);
-    localStorage.setItem("mt5_bridge_url", clean);
-    setBridgeStatus("unknown");
-    setTimeout(() => checkBridge(), 200);
-  };
-
   // ── Execute trade ───────────────────────────────────────────────────────────
   const executeTrade = async (action: "BUY" | "SELL") => {
     const vol = parseFloat(lotSize);
@@ -205,10 +187,10 @@ export function LiveChartPanel() {
       toast({ title: "Invalid lot size", description: "Enter a positive number (e.g. 0.01)", variant: "destructive" });
       return;
     }
-    if (bridgeStatus !== "online") {
+    if (!connected) {
       toast({
-        title: "MT5 Bridge Offline",
-        description: "Start mt5_bridge.py on your PC first, then update the bridge URL below.",
+        title: "MT5 is not connected",
+        description: "Add your account details in Settings and test the connection before trading.",
         variant: "destructive",
       });
       return;
@@ -216,44 +198,28 @@ export function LiveChartPanel() {
 
     setExecuting(action);
     try {
-      const res = await fetch(`${bridgeUrl}/execute-trade`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol, action, volume: vol }),
-        signal: AbortSignal.timeout(8000),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
+      const trade = await executeLiveTrade({ symbol, direction: action, volume: vol });
+      if (trade.success) {
+        const data = trade.data;
         const result: TradeResult = {
           success: true,
           action, symbol, volume: vol,
           message: data.message || "Trade executed",
-          deal_id: data.deal_id,
-          price_filled: data.price_filled,
+          deal_id: data.orderId ? String(data.orderId) : undefined,
+          price_filled: data.price,
           timestamp: new Date(),
         };
         setLastResult(result);
-        toast({
-          title: `✅ ${action} executed`,
-          description: `${symbol} ${vol} lot${vol !== 1 ? "s" : ""} @ ${data.price_filled ?? "market"} · Deal #${data.deal_id ?? "–"}`,
-        });
       } else {
-        const errMsg = typeof data.detail === "object"
-          ? data.detail.reason || data.detail.message || JSON.stringify(data.detail)
-          : data.detail || data.error || "Unknown error";
-        const result: TradeResult = {
+        setLastResult({
           success: false,
           action, symbol, volume: vol,
-          message: errMsg,
+          message: trade.error || "Trade execution failed",
           timestamp: new Date(),
-        };
-        setLastResult(result);
-        toast({ title: `❌ Trade rejected`, description: errMsg, variant: "destructive" });
+        });
       }
-    } catch (e: any) {
-      const msg = e.name === "TimeoutError" ? "Request timed out — is mt5_bridge.py running?" : e.message;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Trade execution failed.";
       setLastResult({ success: false, action, symbol, volume: vol, message: msg, timestamp: new Date() });
       toast({ title: "Connection failed", description: msg, variant: "destructive" });
     } finally {
@@ -331,57 +297,24 @@ export function LiveChartPanel() {
               MT5 Direct Trading
             </span>
             <div className="flex items-center gap-2">
-              {bridgeStatus === "online" && (
-                <Badge variant="outline" className="text-xs border-green-500/50 text-green-400 gap-1">
-                  <Wifi className="h-3 w-3" /> Bridge Online
-                </Badge>
-              )}
-              {bridgeStatus === "offline" && (
-                <Badge variant="outline" className="text-xs border-red-500/50 text-red-400 gap-1">
-                  <WifiOff className="h-3 w-3" /> Bridge Offline
-                </Badge>
-              )}
-              {bridgeStatus === "unknown" && (
+              {connectionLoading ? (
                 <Badge variant="outline" className="text-xs text-muted-foreground gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" /> Checking…
                 </Badge>
+              ) : connected ? (
+                <Badge variant="outline" className="text-xs border-green-500/50 text-green-400 gap-1">
+                  <Wifi className="h-3 w-3" /> MT5 Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-red-500/50 text-red-400 gap-1">
+                  <WifiOff className="h-3 w-3" /> MT5 Offline
+                </Badge>
               )}
-              <button
-                onClick={() => setShowBridgeSettings(x => !x)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                title="Bridge settings"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
             </div>
           </CardTitle>
         </CardHeader>
 
         <CardContent className="px-4 pb-4 space-y-4">
-          {/* Bridge URL settings panel */}
-          {showBridgeSettings && (
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">MT5 Bridge URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={bridgeUrl}
-                    onChange={e => setBridgeUrl(e.target.value)}
-                    onBlur={e => saveBridgeUrl(e.target.value)}
-                    placeholder="http://localhost:8000"
-                    className="font-mono text-xs h-8"
-                  />
-                  <Button variant="outline" size="sm" className="h-8 px-2 shrink-0" onClick={checkBridge}>
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Run <code className="bg-secondary px-1 rounded">python mt5_bridge.py</code> on your PC. For remote access, use ngrok and paste the https URL here.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Lot size */}
           <div className="space-y-1.5">
             <Label className="text-sm">Lot Size</Label>
@@ -414,7 +347,7 @@ export function LiveChartPanel() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => executeTrade("BUY")}
-              disabled={!!executing}
+              disabled={!!executing || connectionLoading || !connected}
               className={`
                 relative h-16 rounded-xl font-bold text-lg tracking-wide transition-all
                 flex flex-col items-center justify-center gap-0.5
@@ -439,7 +372,7 @@ export function LiveChartPanel() {
 
             <button
               onClick={() => executeTrade("SELL")}
-              disabled={!!executing}
+              disabled={!!executing || connectionLoading || !connected}
               className={`
                 relative h-16 rounded-xl font-bold text-lg tracking-wide transition-all
                 flex flex-col items-center justify-center gap-0.5
@@ -487,17 +420,18 @@ export function LiveChartPanel() {
           )}
 
           {/* Offline help */}
-          {bridgeStatus === "offline" && (
+          {!connectionLoading && !connected && (
             <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400 space-y-1">
-              <p className="font-semibold">Bridge not reachable</p>
-              <p>1. Open MT5 on your PC and enable Auto-Trading</p>
-              <p>2. Run <code className="bg-black/30 px-1 rounded">python mt5_bridge.py</code></p>
-              <p>3. For remote access, run <code className="bg-black/30 px-1 rounded">ngrok http 8000</code> and paste the URL in ⚙️ settings above</p>
+              <p className="font-semibold">MetaTrader 5 is not connected</p>
+              <p>Configure your account number, trading password, and broker server in Settings.</p>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => window.location.assign("/settings")}>
+                Open Settings
+              </Button>
             </div>
           )}
 
           <p className="text-[10px] text-center text-muted-foreground">
-            Trades execute directly on your MT5 terminal via your local bridge server
+            Orders use the MT5 account configured in Settings and execute at the broker's current market price.
           </p>
         </CardContent>
       </Card>

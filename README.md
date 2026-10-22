@@ -41,9 +41,33 @@ Set these in the provider's environment-variable settings (not in Git):
 - `GOOGLE_API_KEY` — Gemini chart analysis and chat
 
 Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
-`SENDGRID_API_KEY`, `FROM_EMAIL`, `METAAPI_TOKEN`, and `METAAPI_ACCOUNT_ID`.
-See `.env.example` for the complete list.
+`SENDGRID_API_KEY`, and `FROM_EMAIL`. See `.env.example` for the complete list.
 
-The MetaTrader 5 desktop bridge remains a separate local/remote service;
-serverless and hosted web deployments cannot run the Windows MT5 terminal
-themselves. Configure the bridge URL in the Live tab after deploying.
+## Direct MetaTrader 5 connection (Windows)
+
+The Express server connects to the local MetaTrader 5 terminal through the
+official Python package. Run the app server on the same Windows machine as the
+installed MT5 terminal, then install the connector dependency:
+
+```powershell
+python -m pip install -r requirements-mt5.txt
+```
+
+Set `MT5_CREDENTIALS_ENCRYPTION_KEY` to a private 64-character hexadecimal key
+before starting the server. Generate one with:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Keep this key stable and private: changing or losing it makes saved MT5
+passwords unreadable. If the Python executable with the installed package is
+not on `PATH` as `python`, set `MT5_PYTHON_PATH` to its full path. After
+applying `supabase/migrations/20261022133400_add_direct_mt5_credentials.sql`
+and restarting the server, enter the account number, trading password, and
+exact broker server name in Settings. Passwords are encrypted at rest and are
+never returned by the settings API.
+
+This direct connector is intended for a Windows host with the MT5 terminal
+installed. A separately hosted frontend or non-Windows/serverless API cannot
+run the local terminal.
