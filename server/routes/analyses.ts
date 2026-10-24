@@ -1,23 +1,17 @@
 import { Router } from "express";
-import { db } from "../db/index";
-import { analyses } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { and, eq, desc } from "drizzle-orm";
+import { storeAnalysisImage, userCollection } from "../firestore";
 
 const router = Router();
-
 router.use(requireAuth);
 
 router.get("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const result = await db
-      .select()
-      .from(analyses)
-      .where(eq(analyses.user_id, req.userId!))
-      .orderBy(desc(analyses.created_at));
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const snapshot = await userCollection(req.userId!, "analyses").orderBy("created_at", "desc").get();
+    return res.json(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  } catch (error) {
+    console.error("List analyses error:", error);
+    return res.status(500).json({ error: "Could not load analyses" });
   }
 });
 
@@ -28,10 +22,10 @@ router.post("/", async (req: AuthenticatedRequest, res) => {
       support_levels, resistance_levels, market_structure, detected_patterns,
       supply_demand_zones, possible_outcomes, stop_loss, take_profit, reasoning, disclaimer,
     } = req.body;
-
-    const [record] = await db.insert(analyses).values({
-      user_id: req.userId!,
-      pair, timeframe, style, image_url, trend, bias,
+    const storedImageUrl = await storeAnalysisImage(req.userId!, image_url);
+    const record = {
+      user_id: req.userId,
+      pair, timeframe, style, image_url: storedImageUrl || image_url || null, trend, bias,
       probability: Number(probability),
       risk_score: Number(risk_score),
       support_levels: support_levels || [],
@@ -41,26 +35,26 @@ router.post("/", async (req: AuthenticatedRequest, res) => {
       supply_demand_zones: supply_demand_zones || [],
       possible_outcomes: possible_outcomes || [],
       stop_loss, take_profit, reasoning, disclaimer,
-    }).returning();
-
-    return res.json(record);
-  } catch (err: any) {
-    console.error("Insert analysis error:", err);
-    return res.status(500).json({ error: err.message });
+      created_at: new Date().toISOString(),
+    };
+    const ref = await userCollection(req.userId!, "analyses").add(record);
+    return res.json({ id: ref.id, ...record });
+  } catch (error) {
+    console.error("Insert analysis error:", error);
+    return res.status(500).json({ error: "Could not save analysis" });
   }
 });
 
 router.delete("/:id", async (req: AuthenticatedRequest, res) => {
   try {
-    const id = String(req.params.id);
-    const [deleted] = await db
-      .delete(analyses)
-      .where(and(eq(analyses.id, id), eq(analyses.user_id, req.userId!)))
-      .returning({ id: analyses.id });
-    if (!deleted) return res.status(404).json({ error: "Analysis not found" });
+    const ref = userCollection(req.userId!, "analyses").doc(String(req.params.id));
+    const snapshot = await ref.get();
+    if (!snapshot.exists) return res.status(404).json({ error: "Analysis not found" });
+    await ref.delete();
     return res.json({ success: true });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (error) {
+    console.error("Delete analysis error:", error);
+    return res.status(500).json({ error: "Could not delete analysis" });
   }
 });
 

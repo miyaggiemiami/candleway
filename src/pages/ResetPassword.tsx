@@ -1,169 +1,123 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { FormEvent, useEffect, useState } from "react";
+import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
+import { Link, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Loader2, Lock, TrendingUp } from "lucide-react";
+import { auth } from "@/integrations/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { TrendingUp, Lock, Loader2, CheckCircle, Eye, EyeOff } from "lucide-react";
+
+type PageState = "checking" | "ready" | "success" | "error";
 
 export default function ResetPassword() {
+  const [searchParams] = useSearchParams();
+  const [state, setState] = useState<PageState>("checking");
+  const [actionCode, setActionCode] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [checkingRecoverySession, setCheckingRecoverySession] = useState(true);
-  const [hasRecoverySession, setHasRecoverySession] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
+
   useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setHasRecoverySession(Boolean(data.session));
-      setCheckingRecoverySession(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || session) {
-        setHasRecoverySession(Boolean(session));
-        setCheckingRecoverySession(false);
-      }
-    });
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+    let active = true;
+    const code = searchParams.get("oobCode");
+    const mode = searchParams.get("mode");
 
-  const handleReset = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (mode === "resetPassword" && code) {
+      verifyPasswordResetCode(auth, code)
+        .then(() => {
+          if (!active) return;
+          setActionCode(code);
+          setState("ready");
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setMessage(error instanceof Error ? error.message : "This password reset link is invalid or expired.");
+          setState("error");
+        });
+    } else if (searchParams.get("source") === "firebase") {
+      setState("success");
+    } else {
+      setMessage("This password reset link is invalid or expired. Request a new one from the sign-in page.");
+      setState("error");
+    }
 
+    return () => { active = false; };
+  }, [searchParams]);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     if (password.length < 6) {
-      toast({ title: "Invalid Password", description: "Password must be at least 6 characters.", variant: "destructive" });
+      toast({ title: "Invalid password", description: "Password must be at least 6 characters.", variant: "destructive" });
       return;
     }
     if (password !== confirmPassword) {
-      toast({ title: "Passwords Don't Match", description: "Please make sure your passwords match.", variant: "destructive" });
+      toast({ title: "Passwords don't match", description: "Please enter the same password twice.", variant: "destructive" });
       return;
     }
+    if (!actionCode) return;
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      setIsSuccess(true);
-      toast({ title: "Password Updated", description: "Your password has been successfully reset." });
-      await supabase.auth.signOut();
-      setTimeout(() => navigate("/login"), 2000);
-    } catch (err: any) {
-      toast({ title: "Reset Failed", description: err.message, variant: "destructive" });
+      await confirmPasswordReset(auth, actionCode, password);
+      setState("success");
+      toast({ title: "Password updated", description: "Your password has been reset." });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Could not update your password.";
+      setMessage(errorMessage);
+      setState("error");
+      toast({ title: "Reset failed", description: errorMessage, variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const PasswordToggle = ({ show, onToggle }: { show: boolean; onToggle: () => void }) => (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="absolute right-3 top-3 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
-      tabIndex={-1}
-    >
-      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-    </button>
-  );
-
-  if (checkingRecoverySession) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!hasRecoverySession) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md border-border/50 shadow-xl">
-          <CardContent className="pt-6 text-center space-y-4">
-            <p className="text-muted-foreground">Invalid or expired reset link. Please request a new one.</p>
-            <Button onClick={() => navigate("/login")}>Back to Login</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="p-2 bg-primary/10 rounded-xl">
-            <TrendingUp className="h-8 w-8 text-primary" />
-          </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-            Apexium
-          </span>
+        <div className="mb-8 flex items-center justify-center gap-2">
+          <div className="rounded-xl bg-primary/10 p-2"><TrendingUp className="h-8 w-8 text-primary" /></div>
+          <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-2xl font-bold text-transparent">Apexium</span>
         </div>
-
         <Card className="border-border/50 shadow-xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">
-              {isSuccess ? "Password Reset!" : "Set New Password"}
+            {state === "checking" && <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />}
+            {state === "success" && <CheckCircle2 className="mx-auto h-8 w-8 text-primary" />}
+            <CardTitle>
+              {state === "checking" ? "Checking reset link..." : state === "ready" ? "Set a new password" : state === "success" ? "Password reset" : "Reset link unavailable"}
             </CardTitle>
             <CardDescription>
-              {isSuccess ? "You'll be redirected shortly." : "Enter your new password below."}
+              {state === "success" ? "Your password was reset. Sign in with your new password." : state === "error" ? message : "Choose a new password for your account."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {isSuccess ? (
-              <div className="flex flex-col items-center gap-4 py-4">
-                <CheckCircle className="h-12 w-12 text-primary" />
-                <p className="text-sm text-muted-foreground">Redirecting to login...</p>
-              </div>
-            ) : (
-              <form onSubmit={handleReset} className="space-y-4">
+          {state === "ready" && (
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="new-password">New Password</Label>
+                  <Label htmlFor="new-password">New password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="new-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                    />
-                    <PasswordToggle show={showPassword} onToggle={() => setShowPassword(v => !v)} />
+                    <Input id="new-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="pl-10" required />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirm-new-password">Confirm Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="confirm-new-password"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                    />
-                    <PasswordToggle show={showConfirmPassword} onToggle={() => setShowConfirmPassword(v => !v)} />
-                  </div>
+                  <Label htmlFor="confirm-password">Confirm new password</Label>
+                  <Input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : "Update Password"}
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : "Update password"}
                 </Button>
               </form>
-            )}
-          </CardContent>
+            </CardContent>
+          )}
+          {(state === "success" || state === "error") && (
+            <CardContent>
+              <Button asChild className="w-full"><Link to="/login">Back to sign in</Link></Button>
+            </CardContent>
+          )}
         </Card>
       </div>
     </div>

@@ -1,9 +1,7 @@
 import { Router } from "express";
-import { db } from "../db/index";
-import { profiles } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq } from "drizzle-orm";
 import { getRequestOrigin } from "../requestOrigin";
+import { userDocument } from "../firestore";
 import Stripe from "stripe";
 
 const router = Router();
@@ -26,13 +24,14 @@ function getPriceId(): string {
 router.post("/check-subscription", async (req: AuthenticatedRequest, res) => {
   try {
     const stripe = getStripe();
-    const [profile] = await db.select().from(profiles).where(eq(profiles.user_id, req.userId!)).limit(1);
-    if (!profile) return res.json({ subscribed: false });
+    const profileRef = userDocument(req.userId!, "profiles", "default");
+    const profileSnapshot = await profileRef.get();
+    if (!profileSnapshot.exists) return res.json({ subscribed: false });
 
     const email = req.userEmail!;
     const customers = await stripe.customers.list({ email, limit: 1 });
     if (customers.data.length === 0) {
-      await db.update(profiles).set({ is_premium: false }).where(eq(profiles.user_id, req.userId!));
+      await profileRef.set({ is_premium: false, subscription_tier: "free" }, { merge: true });
       return res.json({ subscribed: false });
     }
 
@@ -45,9 +44,9 @@ router.post("/check-subscription", async (req: AuthenticatedRequest, res) => {
       // Stripe moved the period end onto the subscription item, not the subscription itself.
       const periodEndUnix = subscriptions.data[0].items.data[0]?.current_period_end;
       subscriptionEnd = periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null;
-      await db.update(profiles).set({ is_premium: true, subscription_tier: "premium" }).where(eq(profiles.user_id, req.userId!));
+      await profileRef.set({ is_premium: true, subscription_tier: "premium" }, { merge: true });
     } else {
-      await db.update(profiles).set({ is_premium: false, subscription_tier: "free" }).where(eq(profiles.user_id, req.userId!));
+      await profileRef.set({ is_premium: false, subscription_tier: "free" }, { merge: true });
     }
 
     return res.json({ subscribed: hasActiveSub, subscription_end: subscriptionEnd });

@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { eq } from "drizzle-orm";
 import profilesRouter from "./routes/profiles";
 import analysesRouter from "./routes/analyses";
 import tradesRouter from "./routes/trades";
@@ -10,8 +9,7 @@ import riskConsentRouter from "./routes/riskConsent";
 import metatraderRouter from "./routes/metatrader";
 import stripeRouter from "./routes/stripe";
 import { requireAuth, AuthenticatedRequest } from "./auth";
-import { db } from "./db/index";
-import { profiles } from "./db/schema";
+import { userDocument } from "./firestore";
 
 const FREE_DAILY_ANALYSIS_LIMIT = 10;
 
@@ -76,14 +74,24 @@ app.post("/api/analyze-chart", requireAuth, async (req: AuthenticatedRequest, re
     const { imageBase64, pair, timeframe, style } = req.body;
     if (!imageBase64) return res.json({ error: "No image provided" });
 
-    let [profile] = await db.select().from(profiles).where(eq(profiles.user_id, req.userId!)).limit(1);
-    if (!profile) {
-      [profile] = await db.insert(profiles).values({ user_id: req.userId! }).returning();
-    }
+    const profileRef = userDocument(req.userId!, "profiles", "default");
+    const profileSnapshot = await profileRef.get();
+    const profile = profileSnapshot.exists
+      ? profileSnapshot.data()!
+      : { is_premium: false, daily_analyses_used: 0, last_analysis_reset: new Date().toISOString() };
+    if (!profileSnapshot.exists) await profileRef.set(profile);
 
     const lastReset = profile.last_analysis_reset ? new Date(profile.last_analysis_reset) : null;
     const hoursSinceReset = lastReset ? (Date.now() - lastReset.getTime()) / (1000 * 60 * 60) : 25;
     const usedToday = hoursSinceReset >= 24 ? 0 : profile.daily_analyses_used || 0;
+    if (hoursSinceReset >= 24) {
+      profile.daily_analyses_used = 0;
+      profile.last_analysis_reset = new Date().toISOString();
+      await profileRef.set({
+        daily_analyses_used: 0,
+        last_analysis_reset: profile.last_analysis_reset,
+      }, { merge: true });
+    }
 
     if (!profile.is_premium && usedToday >= FREE_DAILY_ANALYSIS_LIMIT) {
       return res.status(429).json({

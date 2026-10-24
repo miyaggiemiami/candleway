@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/integrations/firebase/client";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { TrendingUp, Mail, Lock, Loader2, User, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
@@ -43,13 +44,28 @@ export default function Auth() {
     }
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase(), {
+        url: `${window.location.origin}/reset-password?source=firebase`,
       });
-      if (error) throw error;
-      toast({ title: "Reset Link Sent", description: "Check your email for a password reset link." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({
+        title: "Check your email",
+        description: "If an account exists for this address, Firebase will send a password reset link.",
+      });
+    } catch (err: unknown) {
+      const errorCode = typeof err === "object" && err !== null && "code" in err ? err.code : "";
+      if (errorCode === "auth/user-not-found") {
+        toast({
+          title: "Check your email",
+          description: "If an account exists for this address, Firebase will send a password reset link.",
+        });
+        return;
+      }
+      console.error("Firebase password reset request failed:", err);
+      toast({
+        title: "Password reset request failed",
+        description: err instanceof Error ? err.message : "Please try again later.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -95,7 +111,7 @@ export default function Auth() {
     setIsLoading(false);
     if (error) {
       let message = error.message;
-      if (error.message.includes("Invalid login credentials")) message = "Invalid email or password. Please try again.";
+      if (error.message.includes("invalid-credential") || error.message.includes("wrong-password")) message = "Invalid email or password. Please try again.";
       toast({ title: "Login Failed", description: message, variant: "destructive" });
     } else {
       toast({ title: "Welcome back!", description: "You have successfully logged in." });
@@ -110,10 +126,14 @@ export default function Auth() {
     setIsLoading(false);
     if (error) {
       let message = error.message;
-      if (error.message.includes("already exists")) message = "An account with this email already exists. Please log in instead.";
+      if (error.message.includes("email-already-in-use")) message = "An account with this email already exists. Please log in instead.";
+      if (error.message.includes("operation-not-allowed")) message = "Email/password sign-in is not enabled in Firebase Authentication.";
       toast({ title: "Sign Up Failed", description: message, variant: "destructive" });
     } else {
-      toast({ title: "Account Created!", description: "Welcome to Apexium. Start analyzing charts now!" });
+      toast({
+        title: "Account Created!",
+        description: "Welcome to Apexium. You can verify your email later from the reminder in the app.",
+      });
     }
   };
 

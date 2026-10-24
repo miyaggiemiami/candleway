@@ -35,13 +35,24 @@ the built frontend and `/api/*`.
 
 Set these in the provider's environment-variable settings (not in Git):
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `SUPABASE_URL` and `SUPABASE_ANON_KEY` — server-side Supabase Auth API access
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` — browser Supabase Auth access
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID` — Firebase web app settings
+- `FIREBASE_PROJECT_ID`, `FIREBASE_STORAGE_BUCKET`, and one server credential method: `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`, or Google Application Default Credentials
 - `GOOGLE_API_KEY` — Gemini chart analysis and chat
 
-Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
-`SENDGRID_API_KEY`, and `FROM_EMAIL`. See `.env.example` for the complete list.
+## Firebase Authentication setup
+
+1. Create a Firebase project and register a Web app in Project settings.
+2. Enable **Authentication → Sign-in method → Email/Password**.
+3. Add localhost and the deployed website domain under **Authentication → Settings → Authorized domains**.
+4. Put the web app settings in the `VITE_FIREBASE_*` variables. These browser settings are public, but the Admin SDK credentials are private and must only be configured as server-side secrets.
+5. Configure Firebase Admin on the API server using a service-account JSON secret, `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` + `FIREBASE_PROJECT_ID`, or Google Application Default Credentials.
+6. Create a Firestore database in **Build → Firestore Database** and a Storage bucket in **Build → Storage**. Set the same Firebase project ID in the frontend and server configuration, and the bucket name in `FIREBASE_STORAGE_BUCKET`. Firebase's built-in email action handles verification and password-reset emails; no SMTP key is needed.
+7. Deploy the included Firestore and Storage rules (`firebase deploy --only firestore:rules,storage`) or paste them into the Firebase Console. They deny direct browser access; app data is accessed through the authenticated server API. Firebase's default email action handler redirects back to the app routes.
+
+Users may sign in immediately and verify later from the in-app reminder. The API independently verifies Firebase ID tokens with the Admin SDK. User profiles, trading history, risk settings, consent, and MetaTrader settings are stored in Firestore; chart images are stored in Firebase Storage. Existing accounts and old database data are not automatically migrated. Existing users must create Firebase accounts, and old records need a separate migration if they should be retained.
+
+Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and MetaTrader
+settings. See `.env.example` for the complete list.
 
 ## Direct MetaTrader 5 connection (Windows)
 
@@ -63,8 +74,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 Keep this key stable and private: changing or losing it makes saved MT5
 passwords unreadable. If the Python executable with the installed package is
 not on `PATH` as `python`, set `MT5_PYTHON_PATH` to its full path. After
-applying `supabase/migrations/20261022133400_add_direct_mt5_credentials.sql`
-and restarting the server, enter the account number, trading password, and
+configuring Firebase and restarting the server, enter the account number, trading password, and
 exact broker server name in Settings. Passwords are encrypted at rest and are
 never returned by the settings API.
 

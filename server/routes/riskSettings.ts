@@ -1,11 +1,8 @@
 import { Router } from "express";
-import { db } from "../db/index";
-import { riskSettings } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq } from "drizzle-orm";
+import { userDocument } from "../firestore";
 
 const router = Router();
-
 router.use(requireAuth);
 
 const DEFAULT_SETTINGS = {
@@ -22,34 +19,35 @@ const DEFAULT_SETTINGS = {
 
 router.get("/", async (req: AuthenticatedRequest, res) => {
   try {
-    let [settings] = await db.select().from(riskSettings).where(eq(riskSettings.user_id, req.userId!)).limit(1);
-    if (!settings) {
-      [settings] = await db.insert(riskSettings).values({ user_id: req.userId!, ...DEFAULT_SETTINGS }).returning();
-    }
-    return res.json(settings);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const ref = userDocument(req.userId!, "riskSettings", "default");
+    const snapshot = await ref.get();
+    if (!snapshot.exists) await ref.set(DEFAULT_SETTINGS);
+    return res.json({ user_id: req.userId, ...(snapshot.exists ? snapshot.data() : DEFAULT_SETTINGS) });
+  } catch (error) {
+    console.error("Get risk settings error:", error);
+    return res.status(500).json({ error: "Could not load risk settings" });
   }
 });
 
 router.patch("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const allowed = ["risk_per_trade", "max_trades_per_day", "max_daily_loss", "daily_profit_lock", "confidence_threshold", "automation_mode", "circuit_breaker_enabled", "news_filter_enabled", "kill_switch_active"];
-    const updates: Record<string, any> = { updated_at: new Date() };
+    const allowed = [
+      "risk_per_trade", "max_trades_per_day", "max_daily_loss", "daily_profit_lock",
+      "confidence_threshold", "automation_mode", "circuit_breaker_enabled",
+      "news_filter_enabled", "kill_switch_active",
+    ];
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
 
-    let [settings] = await db.select().from(riskSettings).where(eq(riskSettings.user_id, req.userId!)).limit(1);
-    if (!settings) {
-      [settings] = await db.insert(riskSettings).values({ user_id: req.userId!, ...DEFAULT_SETTINGS, ...updates }).returning();
-    } else {
-      [settings] = await db.update(riskSettings).set(updates).where(eq(riskSettings.user_id, req.userId!)).returning();
-    }
-
-    return res.json(settings);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const ref = userDocument(req.userId!, "riskSettings", "default");
+    await ref.set(updates, { merge: true });
+    const snapshot = await ref.get();
+    return res.json({ user_id: req.userId, ...snapshot.data() });
+  } catch (error) {
+    console.error("Update risk settings error:", error);
+    return res.status(500).json({ error: "Could not update risk settings" });
   }
 });
 

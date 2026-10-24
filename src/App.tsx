@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AIChatWidget } from "./components/chat/AIChatWidget";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FullPageLoader } from "./components/ui/full-page-loader";
+import { EmailVerificationNotice } from "./components/layout/EmailVerificationNotice";
 
 // Route-level code splitting: the dashboard pulls in charting/trading
 // components and was ballooning the initial bundle to ~1.4MB. Lazy-loading
@@ -22,6 +23,7 @@ const History = lazy(() => import("./pages/History"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Auth = lazy(() => import("./pages/Auth"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -43,6 +45,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <EmailVerificationNotice />
           <Suspense fallback={<FullPageLoader />}>
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
@@ -54,6 +57,7 @@ const App = () => (
             <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

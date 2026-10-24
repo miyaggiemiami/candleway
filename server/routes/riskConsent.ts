@@ -1,33 +1,34 @@
 import { Router } from "express";
-import { db } from "../db/index";
-import { riskConsent } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq } from "drizzle-orm";
+import { userDocument } from "../firestore";
 
 const router = Router();
-
 router.use(requireAuth);
 
 router.get("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const [consent] = await db.select().from(riskConsent).where(eq(riskConsent.user_id, req.userId!)).limit(1);
-    return res.json({ hasConsented: !!consent });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const snapshot = await userDocument(req.userId!, "riskConsent", "default").get();
+    return res.json({ hasConsented: snapshot.exists });
+  } catch (error) {
+    console.error("Get risk consent error:", error);
+    return res.status(500).json({ error: "Could not load risk consent" });
   }
 });
 
 router.post("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const { consent_text } = req.body;
-    await db
-      .insert(riskConsent)
-      .values({ user_id: req.userId!, consent_text })
-      .onConflictDoUpdate({ target: riskConsent.user_id, set: { consent_text, consented_at: new Date() } });
-
+    const consentText = req.body?.consent_text;
+    if (typeof consentText !== "string" || !consentText.trim()) {
+      return res.status(400).json({ error: "Consent text is required" });
+    }
+    await userDocument(req.userId!, "riskConsent", "default").set({
+      consent_text: consentText,
+      consented_at: new Date().toISOString(),
+    });
     return res.json({ success: true });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (error) {
+    console.error("Save risk consent error:", error);
+    return res.status(500).json({ error: "Could not save risk consent" });
   }
 });
 

@@ -1,25 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import { createClient, User } from "@supabase/supabase-js";
-import { db } from "./db/index";
-import { users } from "./db/schema";
-
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey =
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY;
-
-const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  : null;
+import { getFirebaseAdminAuth, getFirebaseDatabase } from "./firebaseAdmin";
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   userEmail?: string;
-  authUser?: User;
+  firebaseUid?: string;
 }
 
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -27,33 +12,38 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "No authorization header" });
   }
-  if (!supabase) {
-    return res.status(500).json({ error: "Supabase authentication is not configured" });
+
+  let adminAuth;
+  try {
+    adminAuth = getFirebaseAdminAuth();
+  } catch (error) {
+    console.error("Firebase Admin authentication is not configured correctly:", error);
+    return res.status(503).json({ error: "Server authentication is not configured correctly" });
+  }
+
+  let decodedToken;
+  try {
+    decodedToken = await adminAuth.verifyIdToken(authHeader.slice(7));
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired Firebase session" });
+  }
+
+  if (!decodedToken.email) {
+    return res.status(401).json({ error: "Firebase account has no email address" });
   }
 
   try {
-    const { data, error } = await supabase.auth.getUser(authHeader.slice(7));
-    if (error || !data.user) {
-      return res.status(401).json({ error: "Invalid or expired Supabase session" });
-    }
-
-    req.userId = data.user.id;
-    req.userEmail = data.user.email || "";
-    req.authUser = data.user;
-
-    // The Replit PostgreSQL tables are feature/profile storage only. Keep a
-    // lightweight mirror so their existing foreign keys continue to work; the
-    // account and password remain managed exclusively by Supabase Auth.
-    await db.insert(users)
-      .values({ id: data.user.id, email: data.user.email || "", password_hash: "supabase-auth" })
-      .onConflictDoUpdate({
-        target: users.id,
-        set: { email: data.user.email || "" },
-      });
-
+    req.firebaseUid = decodedToken.uid;
+    req.userEmail = decodedToken.email.toLowerCase();
+    req.userId = decodedToken.uid;
+    await getFirebaseDatabase().collection("users").doc(decodedToken.uid).set({
+      email: req.userEmail,
+      firebase_uid: decodedToken.uid,
+      updated_at: new Date().toISOString(),
+    }, { merge: true });
     next();
   } catch (error) {
-    console.error("Supabase auth verification error:", error);
-    return res.status(401).json({ error: "Unable to verify Supabase session" });
+    console.error("Firebase user synchronization error:", error);
+    return res.status(500).json({ error: "Could not synchronize authenticated user" });
   }
 }

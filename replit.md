@@ -7,15 +7,14 @@ CandleWay is an AI-powered trading automation platform. Users upload chart scree
 
 - **Frontend**: React + Vite + TypeScript, Tailwind CSS + shadcn/ui components
 - **Backend**: Express.js server (`server/`) with TypeScript via `tsx`
-- **Database**: Replit PostgreSQL via Drizzle ORM
+- **Database**: Firebase Cloud Firestore
 - **AI**: Google Gemini (gemini-2.0-flash / gemini-2.5-flash) for chart analysis and AI chat
-- **Auth**: Supabase Auth sessions with the existing PostgreSQL profile/feature tables
+- **Auth**: Firebase Authentication with Firestore profile/feature data
 
 ## Running the App
 
 ```bash
 npm run dev        # Starts Express server (port 5000) + Vite dev server (port 5173) concurrently
-npm run db:push    # Push schema changes to PostgreSQL
 npm run build      # Build for production
 ```
 
@@ -26,10 +25,7 @@ The Express server proxies all non-API requests to Vite in development. The webv
 ```
 server/
   index.ts          # Express app entry point + AI endpoints (/api/analyze-chart, /api/ai-chat)
-  auth.ts           # Supabase bearer-token verification middleware
-  db/
-    index.ts        # Drizzle + pg Pool setup
-    schema.ts       # All table definitions
+  auth.ts           # Firebase ID-token verification middleware
   routes/
     profiles.ts     # /api/profiles — user profile CRUD
     analyses.ts     # /api/analyses — chart analysis history
@@ -47,17 +43,16 @@ src/
   hooks/useTrades.ts
   pages/            # Index, Auth, History, Pricing, Settings, ResetPassword
   components/       # UI components
-  integrations/supabase/client.ts  # Supabase Auth browser client
+  integrations/firebase/client.ts # Firebase Auth browser client
 ```
 
 ## Environment Variables / Secrets
 
 | Key | Purpose | Required |
 |-----|---------|----------|
-| `DATABASE_URL` | Replit PostgreSQL (auto-set) | Yes |
 | `GOOGLE_API_KEY` | Gemini AI for chart analysis + chat | Yes |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Server-side Supabase Auth token verification | Yes |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser Supabase Auth client | Yes |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase web app config | Yes |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_STORAGE_BUCKET` + Firebase Admin credentials | Firestore, Storage, and server-side token verification | Yes |
 | `VITE_API_BASE_URL` | HTTPS origin of the Express API when frontend is hosted separately | Optional |
 | `STRIPE_SECRET_KEY` | Stripe payments/subscriptions | Optional |
 | `STRIPE_PRICE_ID` | Stripe subscription price ID | Optional |
@@ -72,13 +67,12 @@ src/
 6. **Subscriptions** — Stripe-based premium tier (unlimited analyses, advanced AI)
 
 ## Authentication Flow
-- Users sign up/in through Supabase Auth (`auth.users`)
-- Supabase persists and refreshes the browser session
-- All protected API routes verify the Supabase bearer token
-- Profiles and feature records use the Supabase user ID as their owner key
-- Password reset uses Supabase's recovery email/session flow
+- Users sign up/sign in through Firebase Authentication
+- Users may sign in immediately and verify their email later
+- Protected API routes verify Firebase ID tokens with the Admin SDK
+- Firebase UIDs own their Firestore feature/profile records
+- Firebase handles verification and password-reset emails
 
 ## Notes
-- Supabase Auth is the single account system; Replit PostgreSQL is used for feature/profile storage
+- Firebase Authentication, Firestore, and Storage provide auth and app data
 - Edge functions (analyze-chart, ai-chat, check-subscription, etc.) are now Express routes
-- The Supabase `client.ts` file is kept as a stub to avoid import errors

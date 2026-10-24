@@ -27,7 +27,7 @@ export function Header({ isPremium: propIsPremium, dailyUsed: propDailyUsed, dai
   // Use profile data if available, otherwise fall back to props
   const isPremium = profile?.is_premium ?? propIsPremium ?? false;
   const dailyUsed = profile?.daily_analyses_used ?? propDailyUsed ?? 0;
-  const displayName = profile?.display_name || profile?.username || user?.email?.split('@')[0];
+  const displayName = profile?.display_name || profile?.username || user?.displayName || user?.email?.split('@')[0];
 
   const handleSignOut = async () => {
     await signOut();

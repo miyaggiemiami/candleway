@@ -1,10 +1,16 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  reload,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  updateProfile,
+  User,
+} from "firebase/auth";
 import { api } from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
-import type { Session, User } from "@supabase/supabase-js";
+import { auth } from "@/integrations/firebase/client";
 import { SubscriptionTier } from "@/types/trading";
-
-type AuthUser = User;
 
 interface UserProfile {
   id: string;
@@ -18,13 +24,14 @@ interface UserProfile {
 }
 
 interface AuthContextType {
-  user: AuthUser | null;
-  session: Session | null;
+  user: User | null;
+  userRefreshVersion: number;
   profile: UserProfile | null;
   loading: boolean;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   incrementDailyUsage: () => Promise<void>;
   checkSubscription: () => Promise<void>;
@@ -32,28 +39,83 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function toError(error: unknown, fallback: string) {
+  return error instanceof Error ? error : new Error(fallback);
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [userRefreshVersion, setUserRefreshVersion] = useState(0);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async () => {
-    if (!user) return;
+  const fetchProfile = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setProfile(null);
+      return;
+    }
     try {
       const data = await api.profiles.get();
-      setProfile({
-        ...data,
-        subscription_tier: data.subscription_tier || "free",
-      } as UserProfile);
-    } catch (err) {
-      console.error("Error fetching profile:", err);
+      if (auth.currentUser?.uid === currentUser.uid) {
+        setProfile({
+          ...data,
+          subscription_tier: data.subscription_tier || "free",
+        } as UserProfile);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
     }
-  };
+  }, []);
 
-  const refreshProfile = async () => {
-    if (user) await fetchProfile();
-  };
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      if (!mounted) return;
+      setUser(nextUser);
+      if (!nextUser) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      try {
+        const data = await api.profiles.get();
+        if (mounted && auth.currentUser?.uid === nextUser.uid) {
+          setProfile({
+            ...data,
+            subscription_tier: data.subscription_tier || "free",
+          } as UserProfile);
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }, (error) => {
+      console.error("Error restoring Firebase session:", error);
+      if (mounted) {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!auth.currentUser) return;
+    await reload(auth.currentUser);
+    setUser(auth.currentUser);
+    setUserRefreshVersion((version) => version + 1);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    await fetchProfile();
+  }, [fetchProfile]);
 
   const incrementDailyUsage = async () => {
     if (!user || !profile) return;
@@ -63,108 +125,56 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const checkSubscription = async () => {
-    if (!session) return;
+    if (!auth.currentUser) return;
     try {
       await api.stripe.checkSubscription();
       await fetchProfile();
-    } catch (err) {
-      console.error("Error checking subscription:", err);
+    } catch (error) {
+      console.error("Error checking subscription:", error);
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
-
-    const applySession = async (nextSession: Session | null) => {
-      if (!mounted) return;
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-      if (nextSession?.user) {
-        try {
-          const data = await api.profiles.get();
-          setProfile({
-            ...data,
-            subscription_tier: data.subscription_tier || "free",
-          } as UserProfile);
-        } catch (err) {
-          console.error("Error fetching profile:", err);
-        }
-      } else {
-        setProfile(null);
-      }
-      if (mounted) setLoading(false);
-    };
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => applySession(data.session))
-      .catch((err) => {
-        console.error("Error restoring session:", err);
-        if (mounted) setLoading(false);
-      });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      // Defer the profile request until Supabase finishes its auth callback.
-      // Calling getSession synchronously inside this listener can deadlock.
-      setTimeout(() => void applySession(nextSession), 0);
-    });
-
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const signUp = async (email: string, password: string, displayName?: string) => {
+  const signUp = async (email: string, password: string, displayName: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        options: {
-          data: { display_name: displayName?.trim() || null },
-          emailRedirectTo: `${window.location.origin}/`,
-        },
-      });
-      if (error) throw error;
+      const credential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      await updateProfile(credential.user, { displayName: displayName.trim() });
+      setUser(credential.user);
       return { error: null };
-    } catch (err: unknown) {
-      return { error: new Error(err instanceof Error ? err.message : "Sign up failed") };
+    } catch (error) {
+      return { error: toError(error, "Could not create your account") };
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-      if (error) throw error;
+      const credential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      setUser(credential.user);
       return { error: null };
-    } catch (err: unknown) {
-      if (err instanceof TypeError && /fetch/i.test(err.message)) {
-        return {
-          error: new Error(
-            "Could not reach Supabase. Check that VITE_SUPABASE_URL and its matching publishable key are correct, then restart the app."
-          ),
-        };
-      }
-      if (err instanceof Error && err.message.includes("Invalid API key")) {
-        return {
-          error: new Error(
-            "The Supabase publishable key is invalid or belongs to a different project. Copy the key for this project from Supabase Settings → API Keys."
-          ),
-        };
-      }
-      return { error: new Error(err instanceof Error ? err.message : "Sign in failed") };
+    } catch (error) {
+      return { error: toError(error, "Could not sign in") };
     }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) console.error("Sign out error:", error);
+    await firebaseSignOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, refreshProfile, incrementDailyUsage, checkSubscription }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        userRefreshVersion,
+        profile,
+        loading,
+        signUp,
+        signIn,
+        signOut,
+        refreshUser,
+        refreshProfile,
+        incrementDailyUsage,
+        checkSubscription,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

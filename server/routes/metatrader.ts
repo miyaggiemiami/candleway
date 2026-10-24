@@ -2,10 +2,8 @@ import { Router } from "express";
 import { spawn } from "node:child_process";
 import { createDecipheriv, createCipheriv, randomBytes } from "node:crypto";
 import path from "node:path";
-import { db } from "../db/index";
-import { metatraderSettings, trades } from "../db/schema";
 import { requireAuth, AuthenticatedRequest } from "../auth";
-import { eq } from "drizzle-orm";
+import { userCollection, userDocument } from "../firestore";
 
 const router = Router();
 
@@ -83,7 +81,8 @@ function serializeMt5Request(payload: Record<string, unknown>): Promise<Mt5Resul
 }
 
 async function loadCredentials(userId: string) {
-  const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, userId)).limit(1);
+  const snapshot = await userDocument(userId, "metatraderSettings", "default").get();
+  const settings = snapshot.data();
   if (!settings?.mt5_login || !settings.mt5_server || !settings.mt5_password_encrypted) {
     throw new Error("MT5 is not configured. Add your account number, trading password, and broker server in Settings.");
   }
@@ -97,13 +96,15 @@ async function loadCredentials(userId: string) {
 
 router.get("/settings", async (req: AuthenticatedRequest, res) => {
   try {
-    const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
-    return res.json(settings ? {
+    const snapshot = await userDocument(req.userId!, "metatraderSettings", "default").get();
+    if (!snapshot.exists) return res.json(null);
+    const settings = snapshot.data()!;
+    return res.json({
       login: settings.mt5_login,
       server: settings.mt5_server,
       has_password: Boolean(settings.mt5_password_encrypted),
       is_connected: settings.is_connected,
-    } : null);
+    });
   } catch (err: unknown) {
     return res.status(500).json({ error: getErrorMessage(err, "Could not load MT5 settings.") });
   }
@@ -125,35 +126,19 @@ router.post("/settings", async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: "Connection status must be a boolean." });
     }
 
-    const [existing] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
+    const ref = userDocument(req.userId!, "metatraderSettings", "default");
+    const snapshot = await ref.get();
+    const existing = snapshot.data();
     const credentialsChanged = login !== undefined || server !== undefined || Boolean(password);
-    const changes: Partial<typeof metatraderSettings.$inferInsert> = {
-      ...(login !== undefined ? { mt5_login: login.trim() } : {}),
-      ...(server !== undefined ? { mt5_server: server.trim() } : {}),
-      ...(password ? { mt5_password_encrypted: encryptPassword(password) } : {}),
-      ...(is_connected !== undefined
-        ? { is_connected }
-        : credentialsChanged
-          ? { is_connected: false }
-          : {}),
-      updated_at: new Date(),
-    };
-    if (existing) {
-      await db.update(metatraderSettings)
-        .set(changes)
-        .where(eq(metatraderSettings.user_id, req.userId!))
-    } else {
-      await db.insert(metatraderSettings)
-        .values({
-          user_id: req.userId!,
-          mt5_login: login?.trim() || "",
-          mt5_server: server?.trim() || "",
-          mt5_password_encrypted: password ? encryptPassword(password) : "",
-          ...changes,
-        });
-    }
-
-    const [settings] = await db.select().from(metatraderSettings).where(eq(metatraderSettings.user_id, req.userId!)).limit(1);
+    await ref.set({
+      user_id: req.userId!,
+      mt5_login: login?.trim() || existing?.mt5_login || "",
+      mt5_server: server?.trim() || existing?.mt5_server || "",
+      mt5_password_encrypted: password ? encryptPassword(password) : existing?.mt5_password_encrypted || "",
+      is_connected: is_connected !== undefined ? is_connected : credentialsChanged ? false : existing?.is_connected || false,
+      updated_at: new Date().toISOString(),
+    }, { merge: true });
+    const settings = (await ref.get()).data()!;
     return res.json({
       login: settings.mt5_login,
       server: settings.mt5_server,
@@ -193,12 +178,13 @@ router.post("/trade", async (req: AuthenticatedRequest, res) => {
     }
 
     const result = await serializeMt5Request(connectorPayload);
-    await db.update(metatraderSettings)
-      .set({ is_connected: true, updated_at: new Date() })
-      .where(eq(metatraderSettings.user_id, req.userId!));
+    await userDocument(req.userId!, "metatraderSettings", "default").set({
+      is_connected: true,
+      updated_at: new Date().toISOString(),
+    }, { merge: true });
 
     if (action === "execute-trade") {
-      await db.insert(trades).values({
+      const trade = {
         user_id: req.userId!,
         pair: req.body.symbol,
         direction: req.body.direction,
@@ -211,7 +197,9 @@ router.post("/trade", async (req: AuthenticatedRequest, res) => {
         pnl: "0",
         execution_mode: "live",
         notes: `MT5 order: ${result.orderId || "market"}`,
-      });
+        opened_at: new Date().toISOString(),
+      };
+      await userCollection(req.userId!, "trades").add(trade);
       return res.json(result);
     }
 
@@ -219,9 +207,8 @@ router.post("/trade", async (req: AuthenticatedRequest, res) => {
   } catch (err: unknown) {
     console.error("MetaTrader route error:", err);
     if (action) {
-      await db.update(metatraderSettings)
-        .set({ is_connected: false, updated_at: new Date() })
-        .where(eq(metatraderSettings.user_id, req.userId!))
+      await userDocument(req.userId!, "metatraderSettings", "default")
+        .set({ is_connected: false, updated_at: new Date().toISOString() }, { merge: true })
         .catch((updateError) => console.error("Could not update MT5 connection state:", updateError));
     }
     return res.status(500).json({ error: getErrorMessage(err, "Internal error") });

@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/integrations/firebase/client";
 
 export function getApiUrl(path: string): string {
   const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -6,8 +6,7 @@ export function getApiUrl(path: string): string {
 }
 
 export async function getToken(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token || null;
+  return auth.currentUser?.getIdToken() ?? null;
 }
 
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
