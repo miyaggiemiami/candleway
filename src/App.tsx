@@ -13,6 +13,7 @@ import { AIChatWidget } from "./components/chat/AIChatWidget";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FullPageLoader } from "./components/ui/full-page-loader";
 import { EmailVerificationNotice } from "./components/layout/EmailVerificationNotice";
+import { ChartAnalysisProvider } from "@/hooks/ChartAnalysisProvider";
 
 // Route-level code splitting: the dashboard pulls in charting/trading
 // components and was ballooning the initial bundle to ~1.4MB. Lazy-loading
@@ -45,6 +46,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ChartAnalysisProvider>
           <EmailVerificationNotice />
           <Suspense fallback={<FullPageLoader />}>
           <Routes>
@@ -63,6 +65,7 @@ const App = () => (
           </Routes>
           </Suspense>
           <AIChatWidget />
+          </ChartAnalysisProvider>
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>

@@ -23,6 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRiskSettings } from "@/hooks/useRiskSettings";
 import { useTrades } from "@/hooks/useTrades";
 import { useRiskConsent } from "@/hooks/useRiskConsent";
+import { useChartAnalysisContext } from "@/hooks/useChartAnalysisContext";
 import { 
   TradingPair, 
   Timeframe, 
@@ -48,6 +49,7 @@ export default function Index() {
   const { settings: riskSettings, updateSettings } = useRiskSettings();
   const { trades, openTrade, closeTrade, cancelTrade, getMetrics, getTodayStats } = useTrades();
   const { hasConsented, giveConsent } = useRiskConsent();
+  const { setLatestAnalysis } = useChartAnalysisContext();
 
   const dailyLimit = 10;
   const dailyUsed = profile?.daily_analyses_used ?? 0;
@@ -184,7 +186,7 @@ export default function Index() {
         style,
         imageUrl: imageBase64 || selectedImage || "",
         trend: data.trend || "Sideways",
-        bias: data.bias || data.direction === 'BUY' ? 'Buy' : data.direction === 'SELL' ? 'Sell' : "No Trade",
+        bias: data.bias || (data.direction === 'BUY' ? 'Buy' : data.direction === 'SELL' ? 'Sell' : "No Trade"),
         probability: data.probability || data.confidence || 50,
         riskScore: data.riskScore || 5,
         supportLevels: data.supportLevels || [],
@@ -202,6 +204,7 @@ export default function Index() {
       const dbId = await saveAnalysisToDb(result);
       if (dbId) result.id = dbId;
       await incrementDailyUsage();
+      setLatestAnalysis(result);
       setAnalysisResult(result);
       
       toast({

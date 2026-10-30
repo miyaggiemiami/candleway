@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { MessageCircle, X, Send, Loader2, Bot, User, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiUrl, getToken } from "@/lib/api";
+import { ChatAnalysisContext, useChartAnalysisContext } from "@/hooks/useChartAnalysisContext";
 
 type Msg = { role: "user" | "assistant"; content: string; isError?: boolean; retryAfter?: number };
 
@@ -12,11 +13,13 @@ const CHAT_URL = getApiUrl("/api/ai-chat");
 async function streamChat({
   messages,
   userName,
+  analysisContext,
   onDelta,
   onDone,
 }: {
   messages: Msg[];
   userName?: string;
+  analysisContext: ChatAnalysisContext | null;
   onDelta: (t: string) => void;
   onDone: () => void;
 }) {
@@ -27,7 +30,7 @@ async function streamChat({
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages: messages.filter((m) => !m.isError), userName }),
+    body: JSON.stringify({ messages: messages.filter((m) => !m.isError), userName, analysisContext }),
   });
 
   if (resp.status === 401) {
@@ -113,6 +116,7 @@ function RateLimitMessage({ retryAfter, onRetry }: { retryAfter: number; onRetry
 
 export function AIChatWidget() {
   const { profile } = useAuth();
+  const { analysisContext } = useChartAnalysisContext();
   const userName = profile?.display_name || undefined;
 
   const [open, setOpen] = useState(false);
@@ -155,6 +159,7 @@ export function AIChatWidget() {
       await streamChat({
         messages: convo,
         userName,
+        analysisContext,
         onDelta: upsert,
         onDone: () => setLoading(false),
       });
@@ -172,7 +177,7 @@ export function AIChatWidget() {
       }
       setLoading(false);
     }
-  }, [input, loading, messages]);
+  }, [analysisContext, input, loading, messages, userName]);
 
   const handleRetry = useCallback(() => {
     if (!lastUserMsg) return;
