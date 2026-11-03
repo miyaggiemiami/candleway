@@ -30,7 +30,11 @@ const port = parseInt(process.env.PORT || "5000", 10);
 app.listen(port, "0.0.0.0", () => {
   console.log(`Apexium server running on port ${port}`);
   if (isDevelopment) console.log(`Proxying frontend from Vite on port ${vitePort}`);
-  console.log(`Google AI Key: ${process.env.GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"}`);
+  console.log(
+    `Gemini API Key: ${
+      process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY ? "✓ configured" : "✗ MISSING"
+    }`,
+  );
   console.log(`Database: ${process.env.DATABASE_URL ? "✓ configured" : "✗ MISSING"}`);
   console.log(
     `Supabase Auth: ${

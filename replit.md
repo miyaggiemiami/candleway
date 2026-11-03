@@ -55,7 +55,7 @@ src/
 | Key | Purpose | Required |
 |-----|---------|----------|
 | `DATABASE_URL` | PostgreSQL used by the API | Yes |
-| `GOOGLE_API_KEY` | Gemini AI for chart analysis + chat | Yes |
+| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Gemini AI for chart analysis + chat | Yes |
 | `VITE_SUPABASE_URL` | Supabase project URL used by the browser | Yes |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase browser key | Yes |
 | `SUPABASE_URL` | Supabase project URL used by the API | Yes |

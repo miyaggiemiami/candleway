@@ -15,7 +15,12 @@ app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLEAPI || process.env.GOOGLE_APIKEY || "";
+const GOOGLE_API_KEY =
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_API_KEY ||
+  process.env.GOOGLEAPI ||
+  process.env.GOOGLE_APIKEY ||
+  "";
 
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -33,7 +38,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 function getGemini() {
-  if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured. Add it in the Secrets tab.");
+  if (!GOOGLE_API_KEY) throw new Error("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.");
   return new GoogleGenerativeAI(GOOGLE_API_KEY);
 }
 

@@ -36,7 +36,7 @@ Set these in the provider's environment-variable settings (not in Git):
 - `SUPABASE_URL` — Supabase project URL used by the API
 - `SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key used by the API
 - `VITE_API_URL` — public API origin when frontend and API are deployed separately
-- `GOOGLE_API_KEY` — Gemini chart analysis and chat
+- `GEMINI_API_KEY` — Gemini chart analysis and chat (or use `GOOGLE_API_KEY`)
 - `APP_URL` — optional deployed HTTPS origin used by payment redirects
 
 Optional features use `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
